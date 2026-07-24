@@ -128,6 +128,10 @@ public class LobbyRoomController : MonoBehaviour
                 roleSlots = GameContract.State.Slots;
                 UpdateRoleButtons();
                 UpdatePlayerList();
+
+                // 可能已错过 OnPhaseChanged：进 GameScene 后若已开局则补显示身份 UI
+                if (GameContract.State.Phase != GamePhase.Waiting)
+                    ShowGameUI();
             }
         }
     }
@@ -139,6 +143,34 @@ public class LobbyRoomController : MonoBehaviour
         GameContract.Events.OnRoleSlotsChanged += OnRoleSlotsChanged;
         GameContract.Events.OnPhaseChanged += OnPhaseChanged;
         subscribedToRoleSlots = true;
+
+        if (GameContract.State.Phase != GamePhase.Waiting)
+            ShowGameUI();
+    }
+
+    void EnsureRoleUiRefs()
+    {
+        if (hiderUI == null)
+        {
+            Transform t = transform.Find("HiderUI");
+            if (t == null)
+            {
+                var go = GameObject.Find("HiderUI");
+                if (go != null) hiderUI = go;
+            }
+            else hiderUI = t.gameObject;
+        }
+
+        if (seekerUI == null)
+        {
+            Transform t = transform.Find("SeekerUI");
+            if (t == null)
+            {
+                var go = GameObject.Find("SeekerUI");
+                if (go != null) seekerUI = go;
+            }
+            else seekerUI = t.gameObject;
+        }
     }
     
     void CalculateRoleSlots(int totalPlayers)
@@ -270,14 +302,41 @@ public class LobbyRoomController : MonoBehaviour
         if (gameUI != null) gameUI.SetActive(false);
         if (roleSelectPanel != null) roleSelectPanel.SetActive(true);
         if (reselectBtn != null) reselectBtn.gameObject.SetActive(false);
+        UpdateRoleUI(PlayerRole.None);
         UpdateButtonVisibility();
     }
     
     void ShowGameUI()
     {
+        EnsureRoleUiRefs();
+
         if (lobbyUI != null) lobbyUI.SetActive(false);
         if (gameUI != null) gameUI.SetActive(true);
         if (roleSelectPanel != null) roleSelectPanel.SetActive(false);
+        if (reselectBtn != null) reselectBtn.gameObject.SetActive(false);
+        if (readyBtn != null) readyBtn.gameObject.SetActive(false);
+        if (startGameBtn != null) startGameBtn.gameObject.SetActive(false);
+
+        PlayerRole role = ResolveLocalRole();
+        selectedRole = role;
+        hasSelectedRole = role != PlayerRole.None;
+        UpdateRoleUI(role);
+        gameStarted = true;
+    }
+
+    PlayerRole ResolveLocalRole()
+    {
+        if (selectedRole != PlayerRole.None)
+            return selectedRole;
+
+        RoomPlayer localPlayer = GetLocalRoomPlayer();
+        if (localPlayer != null && localPlayer.Role != PlayerRole.None)
+            return localPlayer.Role;
+
+        if (GameContract.IsBound && GameContract.State.LocalPlayer != null)
+            return GameContract.State.LocalPlayer.Role;
+
+        return PlayerRole.None;
     }
     
     void UpdateButtonVisibility()
@@ -449,13 +508,17 @@ public class LobbyRoomController : MonoBehaviour
             UpdateStatusText($"✅ 已选择: {GetRoleDisplayName(role)}");
         }
         
-        UpdateRoleUI(role);
-        
         if (roleSelectPanel != null)
             roleSelectPanel.SetActive(false);
         
         if (reselectBtn != null)
             reselectBtn.gameObject.SetActive(true);
+        
+        // 对局 UI（HiderUI/SeekerUI）等开局 ShowGameUI 再显示；选角阶段只记身份
+        if (gameStarted)
+            UpdateRoleUI(role);
+        else
+            UpdateRoleUI(PlayerRole.None);
         
         UpdatePlayerList();
         UpdateRoleCounts();
@@ -465,17 +528,24 @@ public class LobbyRoomController : MonoBehaviour
     
     void UpdateRoleUI(PlayerRole role)
     {
-        if (hiderUI == null && seekerUI == null) return;
+        EnsureRoleUiRefs();
+        if (hiderUI == null && seekerUI == null)
+        {
+            Debug.LogWarning("[LobbyRoomController] GameScene 未绑定 HiderUI/SeekerUI");
+            return;
+        }
         
         if (role == PlayerRole.Hider)
         {
             if (hiderUI != null) hiderUI.SetActive(true);
             if (seekerUI != null) seekerUI.SetActive(false);
+            Debug.Log("[LobbyRoomController] GameScene 显示 HiderUI");
         }
         else if (role == PlayerRole.Seeker)
         {
             if (hiderUI != null) hiderUI.SetActive(false);
             if (seekerUI != null) seekerUI.SetActive(true);
+            Debug.Log("[LobbyRoomController] GameScene 显示 SeekerUI");
         }
         else
         {
@@ -641,6 +711,8 @@ public class LobbyRoomController : MonoBehaviour
         {
             GameContract.Commands.HostStartGame();
             UpdateStatusText("🚀 正在开始游戏...");
+            // GameScene 已在选角；进入 Prep 时 Rpc 会再调一次，这里先切对局 UI
+            ShowGameUI();
         }
         else
         {
@@ -691,11 +763,10 @@ public class LobbyRoomController : MonoBehaviour
     
     void OnPhaseChanged(GamePhase phase, float duration)
     {
-        if (phase != GamePhase.Waiting && !gameStarted)
-        {
-            gameStarted = true;
-            ShowGameUI();
-        }
+        if (phase == GamePhase.Waiting)
+            return;
+
+        ShowGameUI();
     }
     
     void UpdateRoleButtons()
