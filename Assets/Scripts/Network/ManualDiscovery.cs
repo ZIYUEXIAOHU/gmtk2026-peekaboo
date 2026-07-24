@@ -28,11 +28,6 @@ public class ManualDiscovery : MonoBehaviour
 
     private Queue<Action> mainThreadActions = new Queue<Action>();
 
-    void Start()
-    {
-        StartListening();
-    }
-
     void Update()
     {
         lock (mainThreadActions)
@@ -53,6 +48,9 @@ public class ManualDiscovery : MonoBehaviour
 
     public void StartBroadcasting()
     {
+        // 房主只负责广播；释放发现监听端口，允许同机客户端按需监听。
+        StopListening();
+
         if (isBroadcasting) return;
 
         isBroadcasting = true;
