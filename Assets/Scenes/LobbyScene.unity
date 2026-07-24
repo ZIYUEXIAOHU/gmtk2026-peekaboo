@@ -737,7 +737,7 @@ MonoBehaviour:
   offlineScene: 
   onlineScene: 
   offlineSceneLoadDelay: 0
-  playerPrefab: {fileID: 3922214107978572470, guid: 5e0cb24e74aa16e4e970b4c0d514eb5a, type: 3}
+  playerPrefab: {fileID: 3922214107978572470, guid: e462b546f0f4fdd4f9896bb968fbf239, type: 3}
   autoCreatePlayer: 1
   playerSpawnMethod: 0
   spawnPrefabs: []

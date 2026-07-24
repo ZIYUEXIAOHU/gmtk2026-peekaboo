@@ -36,28 +36,31 @@ public class CustomNetworkManager : NetworkManager
     // ===== 是否已加载预制体 =====
     private bool prefabsLoaded = false;
     
-    void Awake()
+    public override void Awake()
     {
-        // ===== 从 Resources 加载预制体 =====
+        base.Awake();
         LoadPrefabsFromResources();
-        
+
         if (playerPrefab != null)
         {
             NetworkClient.RegisterPrefab(playerPrefab);
-            Debug.Log("✅ RoomPlayerPrefab 已注册");
+            if (playerPrefab.GetComponent<RoomPlayer>() == null)
+            {
+                Debug.LogError(
+                    "[CustomNetworkManager] playerPrefab 缺少 RoomPlayer！" +
+                    "请改为 RoomPlayerPrefab，否则 SelectRole/Place/Investigate/Slash 全部失效。");
+            }
+            else
+            {
+                Debug.Log($"✅ playerPrefab 已注册：{playerPrefab.name}");
+            }
         }
-        
+
+        // Hider/Seeker 预制体仅作程序 2 外观参考，禁止再当作换角用的玩家 NetworkIdentity。
         if (hiderPrefab != null)
-        {
             NetworkClient.RegisterPrefab(hiderPrefab);
-            Debug.Log("✅ HiderPrefab 已注册");
-        }
-        
         if (seekerPrefab != null)
-        {
             NetworkClient.RegisterPrefab(seekerPrefab);
-            Debug.Log("✅ SeekerPrefab 已注册");
-        }
     }
     
     // ==================== 从 Resources 加载预制体 ====================
@@ -149,105 +152,93 @@ public class CustomNetworkManager : NetworkManager
         string playerName = $"玩家{conn.connectionId + 1}";
         playerNames[conn.connectionId] = playerName;
 
+        if (playerPrefab == null)
+        {
+            Debug.LogError("[CustomNetworkManager] playerPrefab 未设置，无法为连接生成玩家。");
+            return;
+        }
+
         // Instantiate → 设字段 → 只 AddPlayerForConnection（由其负责 Spawn；勿先 NetworkServer.Spawn）
         GameObject player = Instantiate(playerPrefab);
 
         RoomPlayer rp = player.GetComponent<RoomPlayer>();
-        if (rp != null)
+        if (rp == null)
         {
-            rp.connectionId = conn.connectionId;
-            rp.playerName = playerName;
-            // 房主判定：host 模式下，服务器自身的连接即 NetworkServer.localConnection
-            rp.isRoomHost = (conn == NetworkServer.localConnection);
-            rp.role = PlayerRole.None;
-            rp.hiderState = HiderState.Disguised;
-            rp.disguiseItemId = GameConstants.InvalidItemId;
+            Debug.LogError(
+                $"[CustomNetworkManager] playerPrefab「{playerPrefab.name}」缺少 RoomPlayer，已销毁实例。" +
+                "请把 NetworkManager.playerPrefab 设为 RoomPlayerPrefab。");
+            Destroy(player);
+            return;
         }
+
+        rp.connectionId = conn.connectionId;
+        rp.playerName = playerName;
+        // 房主判定：host 模式下，服务器自身的连接即 NetworkServer.localConnection
+        rp.isRoomHost = (conn == NetworkServer.localConnection);
+        rp.role = PlayerRole.None;
+        rp.hiderState = HiderState.Disguised;
+        rp.disguiseItemId = GameConstants.InvalidItemId;
 
         NetworkServer.AddPlayerForConnection(conn, player);
 
-        if (rp != null)
-        {
-            roomPlayers.Add(rp);
-            UpdatePlayerListUI();
-            NetworkGameState.Instance?.ServerNotifyRoleSlotsChanged();
-        }
+        roomPlayers.Add(rp);
+        UpdatePlayerListUI();
+        NetworkGameState.Instance?.ServerNotifyRoleSlotsChanged();
 
         Debug.Log($"玩家 {conn.connectionId} 加入，当前人数：{roomPlayers.Count}");
     }
-    
-    // ==================== 生成角色（本地测试 / 兼容旧 UI；契约路径走 SelectRole） ====================
+
+    /// <summary>
+    /// 选身份：只改现有玩家物体上的 Role，绝不销毁/换成 HiderPrefab、SeekerPrefab。
+    /// 契约权威路径是 GameContract.Commands.SelectRole；本方法仅兼容旧 UI 本地调用。
+    /// 外观/控制器由程序 2 在同一 NetworkIdentity 上按 Role 开关。
+    /// </summary>
     public void SpawnPlayerRole(NetworkConnectionToClient conn, PlayerRole role)
     {
         if (conn == null)
         {
-            Debug.LogError("❌ conn 为空！");
+            Debug.LogError("[CustomNetworkManager] SpawnPlayerRole：conn 为空");
             return;
         }
-        
-        Debug.Log($"🎯 生成角色: 连接 {conn.connectionId}, 角色 {role}");
-        
-        LoadPrefabsFromResources();
-        
-        if (conn.identity != null)
+
+        if (conn.identity == null)
         {
-            GameObject oldPlayer = conn.identity.gameObject;
-            RoomPlayer oldRp = oldPlayer.GetComponent<RoomPlayer>();
-            if (oldRp != null)
-            {
-                roomPlayers.Remove(oldRp);
-            }
-            NetworkServer.RemovePlayerForConnection(conn, false);
-            Destroy(oldPlayer);
-            Debug.Log($"🗑️ 销毁旧玩家对象");
+            Debug.LogError(
+                $"[CustomNetworkManager] 连接 {conn.connectionId} 尚无玩家对象。" +
+                "应先由 OnServerAddPlayer 生成带 RoomPlayer 的 playerPrefab。");
+            return;
         }
-        
-        GameObject prefab = null;
+
+        RoomPlayer rp = conn.identity.GetComponent<RoomPlayer>();
+        if (rp == null)
+        {
+            Debug.LogError(
+                $"[CustomNetworkManager] 玩家「{conn.identity.name}」缺少 RoomPlayer，无法设身份。" +
+                "不要用 HiderPrefab/SeekerPrefab 当 playerPrefab。");
+            return;
+        }
+
+        // 只改 State，不换 NetworkIdentity
+        rp.role = role;
         if (role == PlayerRole.Hider)
-            prefab = hiderPrefab;
-        else if (role == PlayerRole.Seeker)
-            prefab = seekerPrefab;
-        
-        if (prefab == null)
         {
-            Debug.LogError($"❌ 未找到 {role} 对应的预制体！");
-            Debug.Log($"   hiderPrefab: {(hiderPrefab != null ? hiderPrefab.name : "NULL")}");
-            Debug.Log($"   seekerPrefab: {(seekerPrefab != null ? seekerPrefab.name : "NULL")}");
-            return;
+            rp.hiderState = HiderState.Disguised;
         }
-        
-        GameObject player = Instantiate(prefab);
-        player.transform.position = GetSpawnPosition(role);
-        
-        RoomPlayer rp = player.GetComponent<RoomPlayer>();
-        if (rp != null)
+        else
         {
-            rp.connectionId = conn.connectionId;
-            if (playerNames.TryGetValue(conn.connectionId, out string name))
-            {
-                rp.playerName = name;
-            }
-            else
-            {
-                rp.playerName = $"玩家{conn.connectionId + 1}";
-            }
-            rp.isReady = false;
-            rp.isRoomHost = (conn == NetworkServer.localConnection);
-            rp.role = role;
             rp.hiderState = HiderState.Disguised;
             rp.disguiseItemId = GameConstants.InvalidItemId;
         }
-        
-        NetworkServer.ReplacePlayerForConnection(conn, player);
-        
-        if (rp != null)
-        {
+
+        rp.transform.position = GetSpawnPosition(role);
+
+        if (!roomPlayers.Contains(rp))
             roomPlayers.Add(rp);
-            UpdatePlayerListUI();
-            NetworkGameState.Instance?.ServerNotifyRoleSlotsChanged();
-        }
-        
-        Debug.Log($"✅ 玩家 {conn.connectionId} 生成为 {role} 角色");
+
+        UpdatePlayerListUI();
+        NetworkGameState.Instance?.ServerNotifyRoleSlotsChanged();
+
+        Debug.Log($"[CustomNetworkManager] 连接 {conn.connectionId} 身份设为 {role}（保留同一玩家物体）");
     }
     
     // ==================== 出生点 ====================
