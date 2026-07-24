@@ -353,6 +353,13 @@ public class NetworkRoomService : MonoBehaviour, IRoomStateReadonly, IRoomComman
     {
         if (data == null || string.IsNullOrEmpty(data.serverId)) return;
 
+        if (_discoveredRooms.TryGetValue(data.serverId, out RoomItemData existing) &&
+            data.ping < 0f &&
+            existing.ping >= 0f)
+        {
+            data.ping = existing.ping;
+        }
+
         _discoveredRooms[data.serverId] = data;
         _lastSeenAt[data.serverId] = Time.unscaledTime;
         PublishRoomList();
