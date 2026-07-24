@@ -302,20 +302,8 @@ public class LobbyRoomController : MonoBehaviour
         }
         else
         {
-            // 本地测试模式
-            if (networkManager != null)
-            {
-                foreach (var player in networkManager.roomPlayers)
-                {
-                    if (player.connectionId == localConnectionId)
-                    {
-                        player.SetRole(role);
-                        break;
-                    }
-                }
-                SpawnLocalPlayer(role);
-            }
-            
+            // 本地/未绑定契约：只改现有玩家 Role，禁止销毁换成 Hider/Seeker 预制体
+            ApplyRoleOnExistingPlayer(role);
             UpdateStatusText($"✅ 已选择: {GetRoleDisplayName(role)}");
         }
         
@@ -330,47 +318,44 @@ public class LobbyRoomController : MonoBehaviour
         UpdateRoleButtons();
     }
     
-    // ==================== 生成本地玩家角色 ====================
-    void SpawnLocalPlayer(PlayerRole role)
+    /// <summary>未绑定契约时：在现有玩家物体上设 Role（不换预制体）。</summary>
+    void ApplyRoleOnExistingPlayer(PlayerRole role)
     {
         if (networkManager == null)
         {
             Debug.LogError("❌ networkManager 为空！");
             return;
         }
-        
+
         NetworkConnectionToClient localConn = null;
-        
         foreach (var conn in NetworkServer.connections.Values)
         {
             if (conn.connectionId == localConnectionId)
             {
                 localConn = conn;
-                Debug.Log($"✅ 通过 connectionId 找到连接: {localConnectionId}");
                 break;
             }
         }
-        
+
         if (localConn == null)
         {
             foreach (var conn in NetworkServer.connections.Values)
             {
                 localConn = conn;
-                Debug.Log($"✅ 使用第一个连接: {conn.connectionId}");
                 break;
             }
         }
-        
+
         if (localConn == null)
         {
-            Debug.LogError($"❌ 找不到任何连接！");
+            Debug.LogError("❌ 找不到任何连接！");
             return;
         }
-        
+
+        // SpawnPlayerRole 现已改为「只改 Role」，不会 Destroy + 换 Hider/SeekerPrefab
         networkManager.SpawnPlayerRole(localConn, role);
-        Debug.Log($"✅ 生成 {role} 角色！");
     }
-    
+
     // ==================== 重新选择 ====================
     void ReselectRole()
     {
@@ -381,15 +366,18 @@ public class LobbyRoomController : MonoBehaviour
         }
         
         Debug.Log("🔄 重新选择身份");
-        
-        DestroyCurrentPlayer();
-        
+
+        // 不再 Destroy 玩家 NetworkIdentity；只清 Role，保留 RoomPlayer
         selectedRole = PlayerRole.None;
         hasSelectedRole = false;
         isReady = false;
         isLocked = false;
         
-        if (networkManager != null)
+        if (GameContract.IsBound)
+        {
+            // 契约无「取消身份」命令：只重置本地 UI；再次点身份会 SelectRole 覆盖服务端
+        }
+        else if (networkManager != null)
         {
             foreach (var player in networkManager.roomPlayers)
             {
@@ -421,34 +409,6 @@ public class LobbyRoomController : MonoBehaviour
         UpdateRoleCounts();
         
         Debug.Log("✅ 已重置，可以重新选择身份");
-    }
-    
-    // ==================== 销毁当前玩家预制体 ====================
-    void DestroyCurrentPlayer()
-    {
-        if (networkManager == null) return;
-        
-        foreach (var conn in NetworkServer.connections.Values)
-        {
-            if (conn.identity != null)
-            {
-                RoomPlayer rp = conn.identity.GetComponent<RoomPlayer>();
-                if (rp != null && rp.connectionId == localConnectionId)
-                {
-                    GameObject playerObj = conn.identity.gameObject;
-                    if (playerObj.name.Contains("HiderPrefab") || 
-                        playerObj.name.Contains("SeekerPrefab") ||
-                        playerObj.GetComponent<HiderController>() != null ||
-                        playerObj.GetComponent<SeekerController>() != null)
-                    {
-                        networkManager.roomPlayers.Remove(rp);
-                        NetworkServer.Destroy(playerObj);
-                        Debug.Log("🗑️ 销毁当前玩家预制体");
-                    }
-                    break;
-                }
-            }
-        }
     }
     
     // ==================== 随机选择 ====================
