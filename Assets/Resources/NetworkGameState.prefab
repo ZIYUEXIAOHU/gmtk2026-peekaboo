@@ -46,7 +46,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   sceneId: 0
-  _assetId: 2252637274
+  _assetId: 855597670
   serverOnly: 0
   visibility: 0
   hasSpawned: 0
@@ -72,9 +72,3 @@ MonoBehaviour:
   hiderSpawnRadius: 6
   itemTable: {fileID: 11400000, guid: b86887e26df61244483f0181fa87776f, type: 2}
   investigablePlaceholderPrefab: {fileID: 2000000001, guid: d5e6f7a8b9c04d1e2f3a4b5c6d7e8f90, type: 3}
-  phase: 0
-  phaseEndTime: 0
-  result:
-    result: 0
-    survivors: 0
-    duration: 0

@@ -47,7 +47,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   sceneId: 0
-  _assetId: 2718281828
+  _assetId: 1413220906
   serverOnly: 0
   visibility: 0
   hasSpawned: 0
@@ -67,8 +67,6 @@ MonoBehaviour:
   syncDirection: 0
   syncMode: 0
   syncInterval: 0
-  itemId: -1
-  hiderNetId: 0
 --- !u!61 &2000000005
 BoxCollider2D:
   m_ObjectHideFlags: 0

@@ -158,7 +158,6 @@ public class CustomNetworkManager : NetworkManager
             return;
         }
 
-        // Instantiate → 设字段 → 只 AddPlayerForConnection（由其负责 Spawn；勿先 NetworkServer.Spawn）
         GameObject player = Instantiate(playerPrefab);
 
         RoomPlayer rp = player.GetComponent<RoomPlayer>();
@@ -173,7 +172,6 @@ public class CustomNetworkManager : NetworkManager
 
         rp.connectionId = conn.connectionId;
         rp.playerName = playerName;
-        // 房主判定：host 模式下，服务器自身的连接即 NetworkServer.localConnection
         rp.isRoomHost = (conn == NetworkServer.localConnection);
         rp.role = PlayerRole.None;
         rp.hiderState = HiderState.Disguised;
@@ -185,7 +183,7 @@ public class CustomNetworkManager : NetworkManager
         UpdatePlayerListUI();
         NetworkGameState.Instance?.ServerNotifyRoleSlotsChanged();
 
-        Debug.Log($"玩家 {conn.connectionId} 加入，当前人数：{roomPlayers.Count}");
+        Debug.Log($"🎮 玩家 {conn.connectionId} 加入，当前人数：{roomPlayers.Count}");
     }
 
     /// <summary>
@@ -271,7 +269,6 @@ public class CustomNetworkManager : NetworkManager
         }
         base.OnServerDisconnect(conn);
 
-        // 名额随玩家离开刷新（SelectRole / HostStartGame 的 CanStart 依赖）
         if (NetworkGameState.Instance != null)
         {
             NetworkGameState.Instance.ServerNotifyRoleSlotsChanged();
@@ -279,9 +276,6 @@ public class CustomNetworkManager : NetworkManager
     }
 
     // ===== 房间模块（程序 1 契约）：客户端连接结果转发给 NetworkRoomService =====
-    // CreateRoom/JoinRoom/LeaveRoom 的权威实现在 NetworkRoomService，这里只做 Mirror 回调转发，
-    // 不在此处做身份选择/阶段机（属于另一任务范围）。
-
     public override void OnClientConnect()
     {
         base.OnClientConnect();
@@ -333,8 +327,6 @@ public class CustomNetworkManager : NetworkManager
 
         if (sceneName == gameScene)
         {
-            // 不销毁 RoomPlayer；不因 Waiting+CanStart 自动开局。
-            // 仅当 HostStartGame 已通过校验并挂起 Prep 时，在此续跑 StartPrep。
             Debug.Log("[CustomNetworkManager] 已进入对局场景；若无挂起 Prep 则仍须 HostStartGame()。");
             NetworkGameState.Instance?.ServerTryStartPendingPrepAfterSceneChange();
         }

@@ -87,6 +87,11 @@ public class RoomListController : MonoBehaviour
             {
                 GameContract.RoomEvents.OnRoomListUpdated += OnRoomListUpdated;
                 GameContract.RoomEvents.OnRoomError += OnRoomError;
+                Debug.Log("✅ RoomListController 订阅契约事件成功");
+            }
+            else
+            {
+                Debug.Log("⏳ 等待契约绑定...");
             }
         }
         catch (System.Exception e)
@@ -98,11 +103,13 @@ public class RoomListController : MonoBehaviour
     // ==================== 契约事件回调 ====================
     void OnRoomListUpdated(IReadOnlyList<RoomInfo> roomList)
     {
+        Debug.Log($"📋 收到房间列表更新：{roomList.Count} 个房间");
         UpdateRoomList(roomList);
     }
     
     void OnRoomError(RoomError error)
     {
+        Debug.Log($"❌ 房间错误: {error.op} - {error.reason}");
         if (error.op == RoomOp.Refresh || error.op == RoomOp.Join)
         {
             string errorMsg = error.reason switch
@@ -136,17 +143,20 @@ public class RoomListController : MonoBehaviour
     
     public void RefreshRoomList()
     {
+        Debug.Log("🔄 刷新房间列表");
         ClearRoomList();
         
         // ===== 优先使用契约 =====
         if (GameContract.IsRoomBound)
         {
+            Debug.Log("📡 使用契约刷新房间列表");
             GameContract.RoomCommands.RefreshRoomList();
             if (listStatusText != null)
                 listStatusText.text = "🔍 正在搜索局域网房间...";
         }
         else
         {
+            Debug.Log("📡 使用兼容模式刷新房间列表");
             // 兼容旧版
             if (manualDiscovery != null)
             {
@@ -349,8 +359,11 @@ public class RoomListController : MonoBehaviour
     
     public void JoinRoom(RoomItemData roomData)
     {
+        Debug.Log($"🔵 JoinRoom 被调用！roomData: {roomData.roomName}, serverId: {roomData.serverId}, ip: {roomData.ipAddress}");
+        
         if (netManager == null)
         {
+            Debug.LogError("❌ netManager 为空！");
             if (listStatusText != null)
                 listStatusText.text = "❌ 错误：找不到网络管理器！";
             return;
@@ -362,24 +375,29 @@ public class RoomListController : MonoBehaviour
         {
             if (listStatusText != null)
                 listStatusText.text = $"👀 以观战模式加入 {roomData.roomName}...";
-            Debug.Log($"以观战模式加入房间：{roomData.roomName}");
+            Debug.Log($"👀 以观战模式加入房间：{roomData.roomName}");
         }
         else
         {
             if (listStatusText != null)
                 listStatusText.text = $"🎮 以玩家身份加入 {roomData.roomName}...";
-            Debug.Log($"以玩家身份加入房间：{roomData.roomName}");
+            Debug.Log($"🎮 以玩家身份加入房间：{roomData.roomName}");
         }
+        
+        // ===== 打印契约绑定状态 =====
+        Debug.Log($"🔍 GameContract.IsRoomBound: {GameContract.IsRoomBound}");
         
         // ===== 优先使用契约 =====
         if (GameContract.IsRoomBound)
         {
+            Debug.Log($"📡 使用契约加入房间: {roomData.serverId}");
             GameContract.RoomCommands.JoinRoom(roomData.serverId);
             if (listStatusText != null)
                 listStatusText.text = $"⏳ 正在加入 {roomData.roomName}...";
         }
         else
         {
+            Debug.Log($"📡 使用兼容模式加入房间: {roomData.ipAddress}");
             // 兼容旧版
             if (NetworkServer.active)
                 netManager.StopHost();
@@ -392,8 +410,10 @@ public class RoomListController : MonoBehaviour
     
     private IEnumerator DelayedConnect(RoomItemData roomData, bool isObserver)
     {
+        Debug.Log($"⏳ DelayedConnect 开始，等待 0.5 秒...");
         yield return new WaitForSeconds(0.5f);
         
+        Debug.Log($"📡 正在连接 IP: {roomData.ipAddress}");
         netManager.networkAddress = roomData.ipAddress;
         PlayerPrefs.SetInt("IsObserver", isObserver ? 1 : 0);
         netManager.StartClient();

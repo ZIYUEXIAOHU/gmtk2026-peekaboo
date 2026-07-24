@@ -2,6 +2,7 @@ using Mirror;
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
+using System.Collections;
 
 public class CreateRoomController : MonoBehaviour
 {
@@ -37,25 +38,6 @@ public class CreateRoomController : MonoBehaviour
         }
     }
     
-    // ===== 连接状态变化回调（契约）=====
-    private void OnConnectionStateChanged(RoomConnectionState state)
-    {
-        if (state == RoomConnectionState.InRoom)
-        {
-            createStatusText.text = "✅ 房间创建成功！正在进入...";
-            createStatusText.color = Color.green;
-            
-            // 进入游戏场景
-            Invoke(nameof(EnterGameScene), 0.5f);
-        }
-        else if (state == RoomConnectionState.Failed)
-        {
-            createStatusText.text = "❌ 创建房间失败，请重试";
-            createStatusText.color = Color.red;
-            createStatusText.gameObject.SetActive(true);
-        }
-    }
-    
     void Start()
     {
         netManager = FindObjectOfType<CustomNetworkManager>();
@@ -78,7 +60,6 @@ public class CreateRoomController : MonoBehaviour
             if (GameContract.IsRoomBound)
             {
                 GameContract.RoomEvents.OnRoomError += OnRoomError;
-                GameContract.RoomEvents.OnConnectionStateChanged += OnConnectionStateChanged;
             }
         }
         catch (System.Exception e)
@@ -94,7 +75,6 @@ public class CreateRoomController : MonoBehaviour
             if (GameContract.IsRoomBound)
             {
                 GameContract.RoomEvents.OnRoomError -= OnRoomError;
-                GameContract.RoomEvents.OnConnectionStateChanged -= OnConnectionStateChanged;
             }
         }
         catch { }
@@ -148,13 +128,39 @@ public class CreateRoomController : MonoBehaviour
             {
                 discovery.StartBroadcasting();
             }
-            
-            createStatusText.text = $"✅ 房间 \"{roomName}\" 创建成功！({maxPlayers}人)";
-            createStatusText.color = Color.green;
-            
-            Debug.Log($"房间创建成功：{roomName}，最大人数：{maxPlayers}");
-            
-            EnterGameScene();
+        }
+        
+        // ===== 不管事件，直接延迟跳转 =====
+        createStatusText.text = $"✅ 房间 \"{roomName}\" 创建成功！({maxPlayers}人)";
+        createStatusText.color = Color.green;
+        
+        Debug.Log($"房间创建成功：{roomName}，最大人数：{maxPlayers}");
+        
+        // 延迟进入游戏场景
+        StartCoroutine(DelayedEnterGameScene());
+    }
+    
+    IEnumerator DelayedEnterGameScene()
+    {
+        yield return new WaitForSeconds(0.8f);
+        
+        if (mainMenuController != null)
+        {
+            mainMenuController.SetCreateModeActive(false);
+            mainMenuController.UpdateStatusText("🎮 进入游戏...");
+        }
+        
+        createStatusText.gameObject.SetActive(false);
+        
+        // 跳转到游戏场景
+        if (netManager != null && !string.IsNullOrEmpty(netManager.gameScene))
+        {
+            Debug.Log("🚀 进入游戏场景");
+            netManager.ServerChangeScene(netManager.gameScene);
+        }
+        else
+        {
+            Debug.LogWarning("⚠️ netManager 或 gameScene 为空，无法跳转");
         }
     }
     
@@ -179,50 +185,5 @@ public class CreateRoomController : MonoBehaviour
         createStatusText.text = "填写信息创建房间";
         createStatusText.color = Color.white;
         createStatusText.gameObject.SetActive(false);
-    }
-    
-    // ==================== 进入游戏场景 ====================
-    void EnterGameScene()
-    {
-        Invoke(nameof(DoEnterGameScene), 0.5f);
-    }
-    
-    void DoEnterGameScene()
-    {
-        if (GameContract.IsRoomBound)
-        {
-            Debug.Log("🚀 进入游戏场景（契约模式）...");
-            
-            if (mainMenuController != null)
-            {
-                mainMenuController.SetCreateModeActive(false);
-                mainMenuController.UpdateStatusText("🎮 进入游戏...");
-            }
-            
-            createStatusText.gameObject.SetActive(false);
-            return;
-        }
-        
-        // ===== 兼容旧版 =====
-        if (netManager != null && NetworkServer.active)
-        {
-            Debug.Log("🚀 进入游戏场景（兼容模式）...");
-            
-            if (mainMenuController != null)
-            {
-                mainMenuController.SetCreateModeActive(false);
-                mainMenuController.UpdateStatusText("🎮 进入游戏...");
-            }
-            
-            createStatusText.gameObject.SetActive(false);
-            netManager.ServerChangeScene(netManager.gameScene);
-        }
-        else
-        {
-            Debug.LogWarning("⚠️ 服务器未启动，无法进入游戏");
-            createStatusText.text = "⚠️ 服务器启动失败，请重试";
-            createStatusText.color = Color.red;
-            createStatusText.gameObject.SetActive(true);
-        }
     }
 }
