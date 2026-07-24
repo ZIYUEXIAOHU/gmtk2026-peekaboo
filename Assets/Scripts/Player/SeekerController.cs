@@ -1,0 +1,162 @@
+using Mirror;
+using UnityEngine;
+
+public class SeekerController : NetworkBehaviour
+{
+    [Header("移动设置")]
+    public float moveSpeed = GameConstants.SeekerMoveSpeed;  // 使用契约常量 0.5
+    public float speedMultiplier = 10f;  // 速度倍率，可在 Inspector 调整
+    
+    [Header("交互范围（使用契约常量）")]
+    public float investigateRange = GameConstants.InvestigateRange;  // 1.5
+    public float slashRange = GameConstants.SlashRange;  // 1.0
+    
+    [Header("检测")]
+    public float groundCheckRadius = 0.2f;
+    public Transform groundCheckPoint;
+    public LayerMask groundLayer;
+    
+    private Rigidbody2D rb;
+    private SpriteRenderer spriteRenderer;
+    private float moveInput;
+    private bool isGrounded;
+    private bool isLocalPlayerReady = false;
+    
+    void Start()
+    {
+        rb = GetComponent<Rigidbody2D>();
+        spriteRenderer = GetComponent<SpriteRenderer>();
+        
+        // ===== 设置 Rigidbody2D =====
+        if (rb != null)
+        {
+            rb.gravityScale = 3f;
+            rb.constraints = RigidbodyConstraints2D.FreezeRotation;
+        }
+        
+        if (groundCheckPoint == null)
+        {
+            GameObject go = new GameObject("GroundCheck");
+            go.transform.SetParent(transform);
+            go.transform.localPosition = new Vector3(0, -0.5f, 0);
+            groundCheckPoint = go.transform;
+        }
+        
+        if (!isLocalPlayer)
+        {
+            Debug.Log("❌ SeekerController: 不是本地玩家，禁用控制");
+            enabled = false;
+            return;
+        }
+        
+        isLocalPlayerReady = true;
+        Debug.Log("✅ SeekerController: 本地玩家已就绪");
+        
+        if (spriteRenderer != null)
+            spriteRenderer.color = new Color(0.9f, 0.3f, 0.2f);
+        
+        // ===== 应用速度倍率 =====
+        moveSpeed = GameConstants.SeekerMoveSpeed * speedMultiplier;
+    }
+    
+    void Update()
+    {
+        if (!isLocalPlayerReady || !isLocalPlayer) return;
+        
+        // ===== 移动 (A/D) =====
+        moveInput = Input.GetAxisRaw("Horizontal");
+        
+        // ===== 调查 (F) =====
+        if (Input.GetKeyDown(KeyCode.F))
+        {
+            Investigate();
+        }
+        
+        // ===== 劈砍 (空格) =====
+        if (Input.GetKeyDown(KeyCode.Space))
+        {
+            Slash();
+        }
+        
+        // ===== 更新朝向 =====
+        UpdateFacing();
+    }
+    
+    void FixedUpdate()
+    {
+        if (!isLocalPlayerReady || !isLocalPlayer) return;
+        
+        // ===== 水平移动（使用 velocity） =====
+        Vector2 velocity = rb.velocity;
+        velocity.x = moveInput * moveSpeed;
+        rb.velocity = velocity;
+        
+        // ===== 检测地面 =====
+        CheckGrounded();
+    }
+    
+    // ==================== 检测地面 ====================
+    void CheckGrounded()
+    {
+        if (groundCheckPoint == null) return;
+        
+        Collider2D[] hits = Physics2D.OverlapCircleAll(
+            groundCheckPoint.position, 
+            groundCheckRadius, 
+            groundLayer
+        );
+        isGrounded = hits.Length > 0;
+    }
+    
+    // ==================== 更新朝向 ====================
+    void UpdateFacing()
+    {
+        if (moveInput > 0)
+            transform.localScale = new Vector3(1, 1, 1);
+        else if (moveInput < 0)
+            transform.localScale = new Vector3(-1, 1, 1);
+    }
+    
+    // ==================== 调查 ====================
+    void Investigate()
+    {
+        if (!isLocalPlayer) return;
+        
+        Debug.Log("🔍 F 调查");
+        
+        if (GameContract.IsBound)
+        {
+            GameContract.Commands.Investigate();
+        }
+        else
+        {
+            Debug.Log("⚠️ 契约未绑定，模拟调查");
+        }
+    }
+    
+    // ==================== 劈砍 ====================
+    void Slash()
+    {
+        if (!isLocalPlayer) return;
+        
+        Debug.Log("⚔️ 空格 劈砍");
+        
+        if (GameContract.IsBound)
+        {
+            GameContract.Commands.Slash();
+        }
+        else
+        {
+            Debug.Log("⚠️ 契约未绑定，模拟劈砍");
+        }
+    }
+    
+    void OnDrawGizmosSelected()
+    {
+        if (groundCheckPoint != null)
+        {
+            Gizmos.color = Color.green;
+            Gizmos.DrawWireSphere(groundCheckPoint.position, groundCheckRadius);
+        }
+    }
+}

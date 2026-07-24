@@ -1,6 +1,7 @@
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
+using System.Collections.Generic;
 
 public class GameMainMenuController : MonoBehaviour
 {
@@ -17,10 +18,12 @@ public class GameMainMenuController : MonoBehaviour
     [Header("设置面板")]
     public GameObject settingsPanel;
     public Button settingsBackBtn;
-    public Slider volumeSlider;              // ← 只保留音量滑块
+    public Slider volumeSlider;
     
     [Header("状态")]
     public TextMeshProUGUI statusText;
+    
+    private RoomConnectionState currentConnectionState = RoomConnectionState.Disconnected;
     
     private void Start()
     {
@@ -43,8 +46,93 @@ public class GameMainMenuController : MonoBehaviour
         // 加载保存的设置
         LoadSettings();
         
+        // ===== 订阅契约事件 =====
+        SubscribeRoomEvents();
+        
         // 默认显示主菜单
         ShowMainMenu();
+    }
+    
+    // ==================== 订阅契约事件 ====================
+    void SubscribeRoomEvents()
+    {
+        try
+        {
+            if (GameContract.IsRoomBound)
+            {
+                GameContract.RoomEvents.OnConnectionStateChanged += OnConnectionStateChanged;
+                GameContract.RoomEvents.OnRoomListUpdated += OnRoomListUpdated;
+                GameContract.RoomEvents.OnRoomError += OnRoomError;
+                Debug.Log("✅ GameMainMenuController 订阅契约事件成功");
+            }
+            else
+            {
+                Debug.Log("⏳ 等待契约绑定...");
+            }
+        }
+        catch (System.Exception e)
+        {
+            Debug.LogWarning($"订阅契约事件失败（等待契约实现）：{e.Message}");
+        }
+    }
+    
+    // ==================== 契约事件回调 ====================
+    void OnConnectionStateChanged(RoomConnectionState state)
+    {
+        currentConnectionState = state;
+        
+        string statusMsg = state switch
+        {
+            RoomConnectionState.Disconnected => "📋 已断开连接",
+            RoomConnectionState.Connecting => "⏳ 正在连接...",
+            RoomConnectionState.InRoom => "✅ 已加入房间",
+            RoomConnectionState.Failed => "❌ 连接失败，请重试",
+            _ => "📋 已断开连接"
+        };
+        
+        if (statusText != null)
+            statusText.text = statusMsg;
+    }
+    
+    void OnRoomListUpdated(IReadOnlyList<RoomInfo> roomList)
+    {
+        RoomListController controller = FindObjectOfType<RoomListController>();
+        if (controller != null)
+        {
+            controller.UpdateRoomList(roomList);
+        }
+    }
+    
+    void OnRoomError(RoomError error)
+    {
+        string errorMsg = error.reason switch
+        {
+            RoomErrorReason.Timeout => "⏰ 操作超时",
+            RoomErrorReason.RoomNotFound => "🔍 房间不存在",
+            RoomErrorReason.RoomFull => "👥 房间已满",
+            RoomErrorReason.ConnectionFailed => "🔌 网络连接失败",
+            RoomErrorReason.AlreadyInRoom => "⚠️ 已在房间中",
+            _ => $"❌ 操作失败：{error.message}"
+        };
+        
+        if (statusText != null)
+            statusText.text = errorMsg;
+        
+        Debug.LogWarning($"[RoomError] {error.op}: {errorMsg}");
+    }
+    
+    void OnDestroy()
+    {
+        try
+        {
+            if (GameContract.IsRoomBound)
+            {
+                GameContract.RoomEvents.OnConnectionStateChanged -= OnConnectionStateChanged;
+                GameContract.RoomEvents.OnRoomListUpdated -= OnRoomListUpdated;
+                GameContract.RoomEvents.OnRoomError -= OnRoomError;
+            }
+        }
+        catch { }
     }
     
     // ==================== 显示主菜单 ====================
@@ -68,10 +156,18 @@ public class GameMainMenuController : MonoBehaviour
         if (statusText != null)
             statusText.text = "📋 选择房间加入，或点击右侧「创建游戏」";
         
-        RoomListController roomList = FindObjectOfType<RoomListController>();
-        if (roomList != null)
+        // ===== 优先使用契约刷新房间列表 =====
+        if (GameContract.IsRoomBound)
         {
-            roomList.RefreshRoomList();
+            GameContract.RoomCommands.RefreshRoomList();
+        }
+        else
+        {
+            RoomListController roomList = FindObjectOfType<RoomListController>();
+            if (roomList != null)
+            {
+                roomList.RefreshRoomList();
+            }
         }
     }
     
@@ -89,6 +185,13 @@ public class GameMainMenuController : MonoBehaviour
     // ==================== 返回主菜单 ====================
     void BackToMainMenu()
     {
+        // ===== 如果已连接，离开房间 =====
+        if (GameContract.IsRoomBound && currentConnectionState == RoomConnectionState.InRoom)
+        {
+            GameContract.RoomCommands.LeaveRoom();
+            Debug.Log("🚪 离开房间，返回主菜单");
+        }
+        
         ShowMainMenu();
     }
     
@@ -107,7 +210,6 @@ public class GameMainMenuController : MonoBehaviour
     // ==================== 设置功能 ====================
     void LoadSettings()
     {
-        // 加载音量
         float volume = PlayerPrefs.GetFloat("Volume", 1f);
         if (volumeSlider != null)
         {

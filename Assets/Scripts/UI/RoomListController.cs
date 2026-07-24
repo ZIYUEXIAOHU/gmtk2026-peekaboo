@@ -22,8 +22,9 @@ public class RoomListController : MonoBehaviour
     [Header("主控制器")]
     public MainMenuController mainMenuController;
     
-    private List<RoomItemData> allRooms = new List<RoomItemData>();
-    private List<RoomItemData> displayedRooms = new List<RoomItemData>();
+    // ===== 使用契约中的 RoomInfo =====
+    private List<RoomInfo> allRooms = new List<RoomInfo>();
+    private List<RoomInfo> displayedRooms = new List<RoomInfo>();
     private Dictionary<string, RoomItemUI> roomItemMap = new Dictionary<string, RoomItemUI>();
     
     private CustomNetworkManager netManager;
@@ -72,29 +73,100 @@ public class RoomListController : MonoBehaviour
         
         if (listStatusText != null)
             listStatusText.text = "点击「刷新」搜索局域网房间";
+        
+        // ===== 订阅契约事件 =====
+        SubscribeRoomEvents();
+    }
+    
+    // ==================== 订阅契约事件 ====================
+    void SubscribeRoomEvents()
+    {
+        try
+        {
+            if (GameContract.IsRoomBound)
+            {
+                GameContract.RoomEvents.OnRoomListUpdated += OnRoomListUpdated;
+                GameContract.RoomEvents.OnRoomError += OnRoomError;
+            }
+        }
+        catch (System.Exception e)
+        {
+            Debug.LogWarning($"订阅契约事件失败（等待契约实现）：{e.Message}");
+        }
+    }
+    
+    // ==================== 契约事件回调 ====================
+    void OnRoomListUpdated(IReadOnlyList<RoomInfo> roomList)
+    {
+        UpdateRoomList(roomList);
+    }
+    
+    void OnRoomError(RoomError error)
+    {
+        if (error.op == RoomOp.Refresh || error.op == RoomOp.Join)
+        {
+            string errorMsg = error.reason switch
+            {
+                RoomErrorReason.Timeout => "⏰ 操作超时",
+                RoomErrorReason.RoomNotFound => "🔍 房间不存在",
+                RoomErrorReason.RoomFull => "👥 房间已满",
+                RoomErrorReason.ConnectionFailed => "🔌 网络连接失败",
+                RoomErrorReason.AlreadyInRoom => "⚠️ 已在房间中",
+                _ => $"❌ 操作失败：{error.message}"
+            };
+            
+            if (listStatusText != null)
+                listStatusText.text = errorMsg;
+        }
+    }
+    
+    // ==================== 更新房间列表（供契约调用） ====================
+    public void UpdateRoomList(IReadOnlyList<RoomInfo> roomList)
+    {
+        ClearRoomList();
+        
+        foreach (var room in roomList)
+        {
+            allRooms.Add(room);
+        }
+        
+        ApplyFiltersAndSort();
+        UpdateStatusText();
     }
     
     public void RefreshRoomList()
     {
         ClearRoomList();
         
-        if (manualDiscovery != null)
+        // ===== 优先使用契约 =====
+        if (GameContract.IsRoomBound)
         {
-            manualDiscovery.StopListening();
-            manualDiscovery.StartListening();
+            GameContract.RoomCommands.RefreshRoomList();
             if (listStatusText != null)
                 listStatusText.text = "🔍 正在搜索局域网房间...";
         }
         else
         {
-            if (listStatusText != null)
-                listStatusText.text = "❌ 错误：未找到 ManualDiscovery 组件！";
+            // 兼容旧版
+            if (manualDiscovery != null)
+            {
+                manualDiscovery.StopListening();
+                manualDiscovery.StartListening();
+                if (listStatusText != null)
+                    listStatusText.text = "🔍 正在搜索局域网房间...";
+            }
+            else
+            {
+                if (listStatusText != null)
+                    listStatusText.text = "❌ 错误：未找到 ManualDiscovery 组件！";
+            }
         }
         
         if (searchInputField != null)
             searchInputField.text = "";
     }
     
+    // ===== 使用契约中的 RoomInfo =====
     public void AddRoom(string serverId, string ipAddress, int port, string roomName, 
                         string hostName, int currentPlayers, int maxPlayers, 
                         RoomStatus status, string gameMode = "经典模式")
@@ -105,17 +177,14 @@ public class RoomListController : MonoBehaviour
             return;
         }
         
-        RoomItemData room = new RoomItemData
+        RoomInfo room = new RoomInfo
         {
             serverId = serverId,
-            ipAddress = ipAddress,
-            port = port,
             roomName = roomName,
             hostName = hostName,
             currentPlayers = currentPlayers,
             maxPlayers = maxPlayers,
             status = status,
-            gameMode = gameMode,
             ping = UnityEngine.Random.Range(5f, 50f)
         };
         
@@ -126,11 +195,13 @@ public class RoomListController : MonoBehaviour
     
     public void UpdateRoom(string serverId, int currentPlayers, RoomStatus status)
     {
-        RoomItemData room = allRooms.Find(r => r.serverId == serverId);
-        if (room != null)
+        int index = allRooms.FindIndex(r => r.serverId == serverId);
+        if (index >= 0)
         {
-            room.currentPlayers = currentPlayers;
-            room.status = status;
+            RoomInfo updated = allRooms[index];
+            updated.currentPlayers = currentPlayers;
+            updated.status = status;
+            allRooms[index] = updated;
             
             if (roomItemMap.ContainsKey(serverId))
             {
@@ -138,7 +209,7 @@ public class RoomListController : MonoBehaviour
                 RoomItemUI item = roomItemMap[serverId];
                 if (item.playerCountText != null)
                 {
-                    item.playerCountText.text = $"{currentPlayers}/{room.maxPlayers}人";
+                    item.playerCountText.text = $"{currentPlayers}/{updated.maxPlayers}人";
                 }
             }
             
@@ -181,14 +252,13 @@ public class RoomListController : MonoBehaviour
         string searchText = searchInputField.text.Trim().ToLower();
         SortMode sortMode = (SortMode)sortDropdown.value;
         
-        IEnumerable<RoomItemData> filtered = allRooms;
+        IEnumerable<RoomInfo> filtered = allRooms;
         
         if (!string.IsNullOrEmpty(searchText))
         {
             filtered = filtered.Where(r => 
                 r.roomName.ToLower().Contains(searchText) ||
-                r.hostName.ToLower().Contains(searchText) ||
-                r.gameMode.ToLower().Contains(searchText)
+                r.hostName.ToLower().Contains(searchText)
             );
         }
         
@@ -196,7 +266,7 @@ public class RoomListController : MonoBehaviour
         UpdateRoomListUI();
     }
     
-    List<RoomItemData> SortRooms(List<RoomItemData> rooms, SortMode mode)
+    List<RoomInfo> SortRooms(List<RoomInfo> rooms, SortMode mode)
     {
         switch (mode)
         {
@@ -226,7 +296,7 @@ public class RoomListController : MonoBehaviour
             }
         }
         
-        foreach (RoomItemData room in displayedRooms)
+        foreach (RoomInfo room in displayedRooms)
         {
             if (roomItemMap.ContainsKey(room.serverId))
                 continue;
@@ -236,7 +306,18 @@ public class RoomListController : MonoBehaviour
             
             if (itemUI != null)
             {
-                itemUI.SetRoomData(room, this);
+                // 将 RoomInfo 转换为 RoomItemData（兼容旧版 UI）
+                RoomItemData data = new RoomItemData
+                {
+                    serverId = room.serverId,
+                    roomName = room.roomName,
+                    hostName = room.hostName,
+                    currentPlayers = room.currentPlayers,
+                    maxPlayers = room.maxPlayers,
+                    status = room.status,
+                    ping = room.ping
+                };
+                itemUI.SetRoomData(data, this);
                 roomItemMap[room.serverId] = itemUI;
             }
         }
@@ -290,27 +371,31 @@ public class RoomListController : MonoBehaviour
             Debug.Log($"以玩家身份加入房间：{roomData.roomName}");
         }
         
-        // ===== 先停止所有连接 =====
-        if (NetworkServer.active)
-            netManager.StopHost();
-        if (NetworkClient.active)
-            netManager.StopClient();
-        
-        // ===== 延迟连接，确保完全断开 =====
-        StartCoroutine(DelayedConnect(roomData, isObserver));
+        // ===== 优先使用契约 =====
+        if (GameContract.IsRoomBound)
+        {
+            GameContract.RoomCommands.JoinRoom(roomData.serverId);
+            if (listStatusText != null)
+                listStatusText.text = $"⏳ 正在加入 {roomData.roomName}...";
+        }
+        else
+        {
+            // 兼容旧版
+            if (NetworkServer.active)
+                netManager.StopHost();
+            if (NetworkClient.active)
+                netManager.StopClient();
+            
+            StartCoroutine(DelayedConnect(roomData, isObserver));
+        }
     }
     
     private IEnumerator DelayedConnect(RoomItemData roomData, bool isObserver)
     {
         yield return new WaitForSeconds(0.5f);
         
-        // 设置连接信息
         netManager.networkAddress = roomData.ipAddress;
-        
-        // 存储观战模式
         PlayerPrefs.SetInt("IsObserver", isObserver ? 1 : 0);
-        
-        // 启动客户端
         netManager.StartClient();
         
         if (listStatusText != null)
@@ -356,5 +441,15 @@ public class RoomListController : MonoBehaviour
     void OnDestroy()
     {
         CancelInvoke("AutoRefresh");
+        
+        try
+        {
+            if (GameContract.IsRoomBound)
+            {
+                GameContract.RoomEvents.OnRoomListUpdated -= OnRoomListUpdated;
+                GameContract.RoomEvents.OnRoomError -= OnRoomError;
+            }
+        }
+        catch { }
     }
 }

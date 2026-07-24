@@ -1,6 +1,6 @@
 using UnityEngine;
 using UnityEngine.UI;
-using TMPro;  // ← 添加 TextMeshPro 命名空间
+using TMPro;
 
 public class RoomItemUI : MonoBehaviour
 {
@@ -13,7 +13,9 @@ public class RoomItemUI : MonoBehaviour
     public TextMeshProUGUI joinBtnText;      // TMP 文本
     public Image statusIcon;
     
-    private RoomItemData roomData;
+    // ===== 支持 RoomInfo（契约）和 RoomItemData（旧版）=====
+    private RoomInfo? roomInfo;              // 契约中的 RoomInfo
+    private RoomItemData roomData;           // 旧版数据
     private RoomListController parentController;
     
     private Color idleColor = new Color(0, 0.8f, 0.2f);
@@ -28,27 +30,51 @@ public class RoomItemUI : MonoBehaviour
         }
     }
     
+    // ===== 使用 RoomInfo（契约）=====
+    public void SetRoomData(RoomInfo data, RoomListController controller)
+    {
+        roomInfo = data;
+        roomData = null;
+        parentController = controller;
+        
+        UpdateUI(data.roomName, data.hostName, data.currentPlayers, data.maxPlayers, data.status);
+    }
+    
+    // ===== 使用 RoomItemData（旧版兼容）=====
     public void SetRoomData(RoomItemData data, RoomListController controller)
     {
         roomData = data;
+        roomInfo = null;
         parentController = controller;
         
+        UpdateUI(data.roomName, data.hostName, data.currentPlayers, data.maxPlayers, data.status);
+    }
+    
+    private void UpdateUI(string roomName, string hostName, int currentPlayers, int maxPlayers, RoomStatus status)
+    {
         if (roomNameText != null)
-            roomNameText.text = data.roomName;
+            roomNameText.text = roomName;
         
         if (hostNameText != null)
-            hostNameText.text = $"主机: {data.hostName}";
+            hostNameText.text = $"主机: {hostName}";
         
         if (playerCountText != null)
-            playerCountText.text = $"{data.currentPlayers}/{data.maxPlayers}人";
+            playerCountText.text = $"{currentPlayers}/{maxPlayers}人";
         
-        UpdateStatus(data.status);
+        UpdateStatus(status);
     }
     
     public void UpdateStatus(RoomStatus status)
     {
+        // 更新数据
         if (roomData != null)
             roomData.status = status;
+        if (roomInfo.HasValue)
+        {
+            RoomInfo updated = roomInfo.Value;
+            updated.status = status;
+            roomInfo = updated;
+        }
         
         string statusText = "";
         Color statusColor = Color.white;
@@ -97,7 +123,25 @@ public class RoomItemUI : MonoBehaviour
     
     void OnJoinClicked()
     {
-        if (parentController != null && roomData != null)
+        if (parentController == null) return;
+        
+        // 优先使用 RoomInfo
+        if (roomInfo.HasValue)
+        {
+            // 将 RoomInfo 转换为 RoomItemData 调用现有方法
+            RoomItemData data = new RoomItemData
+            {
+                serverId = roomInfo.Value.serverId,
+                roomName = roomInfo.Value.roomName,
+                hostName = roomInfo.Value.hostName,
+                currentPlayers = roomInfo.Value.currentPlayers,
+                maxPlayers = roomInfo.Value.maxPlayers,
+                status = roomInfo.Value.status,
+                ping = roomInfo.Value.ping
+            };
+            parentController.JoinRoom(data);
+        }
+        else if (roomData != null)
         {
             parentController.JoinRoom(roomData);
         }
