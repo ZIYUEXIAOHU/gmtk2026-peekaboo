@@ -1,14 +1,18 @@
 using Mirror;
 using UnityEngine;
 using UnityEngine.UI;
+using TMPro;  // ← 添加 TextMeshPro 命名空间
 using System.Collections.Generic;
 
 public class GameManager : NetworkBehaviour, IGameStateReadonly
 {
     [Header("UI")]
-    public Text statusText;
-    public Text timerText;
-    public Text aliveCountText;
+    public TextMeshProUGUI statusText;      // TMP 文本
+    public TextMeshProUGUI timerText;       // TMP 文本
+    public TextMeshProUGUI hiderCountText;  // TMP 文本
+    public TextMeshProUGUI seekerCountText; // TMP 文本
+    public Image hiderIcon;
+    public Image seekerIcon;
     
     [SyncVar(hook = nameof(OnStateChanged))]
     private GamePhase phase = GamePhase.Waiting;
@@ -40,9 +44,9 @@ public class GameManager : NetworkBehaviour, IGameStateReadonly
     public float PhaseTimeLeft => phaseTimeLeft;
     public int AliveHiders => aliveHiders;
     public int TotalHiders => totalHiders;
-    public IPlayerStateReadonly LocalPlayer => null; // 暂未实现
+    public IPlayerStateReadonly LocalPlayer => null;
     public IReadOnlyList<IPlayerStateReadonly> Players => players;
-    public bool IsLocalPlayerHost => false; // 暂未实现
+    public bool IsLocalPlayerHost => false;
     public RoleSlots Slots => new RoleSlots 
     { 
         seekerCount = seekerCount,
@@ -53,7 +57,6 @@ public class GameManager : NetworkBehaviour, IGameStateReadonly
     public bool IsPracticeLobby => isPracticeLobby;
     public MatchResult Result => matchResult;
     
-    // ==================== 绑定契约事件 ====================
     void Start()
     {
         if (isServer)
@@ -68,7 +71,6 @@ public class GameManager : NetworkBehaviour, IGameStateReadonly
         {
             if (!GameContract.IsBound)
             {
-                // 程序 1 会在启动时绑定，这里只是备用
                 Debug.Log("[GameManager] 等待契约绑定...");
             }
         }
@@ -88,7 +90,6 @@ public class GameManager : NetworkBehaviour, IGameStateReadonly
         isRunning = true;
         isPracticeLobby = false;
         
-        // 通知契约事件
         if (GameContract.IsBound)
         {
             // GameContract.Events.OnPhaseChanged?.Invoke(phase, phaseTimeLeft);
@@ -132,7 +133,6 @@ public class GameManager : NetworkBehaviour, IGameStateReadonly
         phase = GamePhase.Ended;
         isRunning = false;
         
-        // 统计存活躲藏者
         int alive = 0;
         var identities = FindObjectsOfType<NetworkIdentity>();
         foreach (var p in identities)
@@ -160,7 +160,6 @@ public class GameManager : NetworkBehaviour, IGameStateReadonly
     {
         players = newPlayers;
         
-        // 更新计数
         hiderCount = 0;
         seekerCount = 0;
         foreach (var p in players)
@@ -169,14 +168,25 @@ public class GameManager : NetworkBehaviour, IGameStateReadonly
             else if (p.Role == PlayerRole.Seeker) seekerCount++;
         }
         totalHiders = hiderCount;
+        
+        if (hiderCountText != null)
+            hiderCountText.text = hiderCount.ToString();
+        if (seekerCountText != null)
+            seekerCountText.text = seekerCount.ToString();
     }
     
     // ==================== 更新存活人数 ====================
     public void UpdateAliveHiders(int count)
     {
         aliveHiders = count;
-        if (aliveCountText != null)
-            aliveCountText.text = $"👥 存活: {count}人";
+        
+        if (hiderCountText != null)
+            hiderCountText.text = count.ToString();
+        
+        if (hiderIcon != null)
+        {
+            hiderIcon.color = count > 0 ? Color.green : Color.gray;
+        }
     }
     
     [ClientRpc]
