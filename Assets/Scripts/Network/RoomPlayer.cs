@@ -21,7 +21,7 @@ public class RoomPlayer : NetworkBehaviour, IPlayerStateReadonly
 
     // ==================== 契约：身份与对局状态（程序 1 权威） ====================
 
-    [SyncVar]
+    [SyncVar(hook = nameof(OnRoleChanged))]
     public PlayerRole role = PlayerRole.None;
 
     [SyncVar]
@@ -49,6 +49,52 @@ public class RoomPlayer : NetworkBehaviour, IPlayerStateReadonly
 
     // 用于存储玩家列表更新回调
     private static System.Action<int> onPlayerListUpdated;
+
+    HiderController hiderController;
+    SeekerController seekerController;
+
+    public override void OnStartClient()
+    {
+        base.OnStartClient();
+        CacheControllers();
+        ApplyRoleControllers(role);
+    }
+
+    public override void OnStartLocalPlayer()
+    {
+        base.OnStartLocalPlayer();
+        CacheControllers();
+        ApplyRoleControllers(role);
+    }
+
+    void CacheControllers()
+    {
+        if (hiderController == null)
+            hiderController = GetComponent<HiderController>();
+        if (seekerController == null)
+            seekerController = GetComponent<SeekerController>();
+    }
+
+    void OnRoleChanged(PlayerRole oldRole, PlayerRole newRole)
+    {
+        Debug.Log($"玩家 {playerName} 身份: {oldRole} -> {newRole}");
+        ApplyRoleControllers(newRole);
+    }
+
+    /// <summary>
+    /// 同一 NetworkIdentity 上按身份开关移动控制器（不换预制体）。
+    /// 仅本地玩家启用输入；远端靠 NetworkTransform 同步。
+    /// </summary>
+    void ApplyRoleControllers(PlayerRole currentRole)
+    {
+        CacheControllers();
+
+        bool local = isLocalPlayer;
+        if (hiderController != null)
+            hiderController.enabled = local && currentRole == PlayerRole.Hider;
+        if (seekerController != null)
+            seekerController.enabled = local && currentRole == PlayerRole.Seeker;
+    }
 
     void OnPlayerNameChanged(string oldVal, string newVal)
     {
