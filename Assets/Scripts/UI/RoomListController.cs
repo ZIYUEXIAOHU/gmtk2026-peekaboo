@@ -179,11 +179,11 @@ public class RoomListController : MonoBehaviour
     // ===== 使用契约中的 RoomInfo =====
     public void AddRoom(string serverId, string ipAddress, int port, string roomName, 
                         string hostName, int currentPlayers, int maxPlayers, 
-                        RoomStatus status, string gameMode = "经典模式")
+                        RoomStatus status, string gameMode = "经典模式", float ping = -1f)
     {
         if (allRooms.Any(r => r.serverId == serverId))
         {
-            UpdateRoom(serverId, currentPlayers, status);
+            UpdateRoom(serverId, currentPlayers, status, ping);
             return;
         }
         
@@ -195,7 +195,7 @@ public class RoomListController : MonoBehaviour
             currentPlayers = currentPlayers,
             maxPlayers = maxPlayers,
             status = status,
-            ping = UnityEngine.Random.Range(5f, 50f)
+            ping = ping
         };
         
         allRooms.Add(room);
@@ -203,7 +203,7 @@ public class RoomListController : MonoBehaviour
         UpdateStatusText();
     }
     
-    public void UpdateRoom(string serverId, int currentPlayers, RoomStatus status)
+    public void UpdateRoom(string serverId, int currentPlayers, RoomStatus status, float ping = -1f)
     {
         int index = allRooms.FindIndex(r => r.serverId == serverId);
         if (index >= 0)
@@ -211,6 +211,8 @@ public class RoomListController : MonoBehaviour
             RoomInfo updated = allRooms[index];
             updated.currentPlayers = currentPlayers;
             updated.status = status;
+            if (ping >= 0f)
+                updated.ping = ping;
             allRooms[index] = updated;
             
             if (roomItemMap.ContainsKey(serverId))

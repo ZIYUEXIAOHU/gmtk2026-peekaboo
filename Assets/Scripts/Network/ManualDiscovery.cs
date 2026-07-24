@@ -15,18 +15,39 @@ public class ManualDiscovery : MonoBehaviour
 {
     [Header("设置")]
     public int broadcastPort = 47777;
+    [Tooltip("Ping 应答端口；0 表示 broadcastPort + 1")]
+    public int pingPort = 0;
     public float broadcastInterval = 2f;
 
     [Header("可选兼容（旧 UI，可留空）")]
     [Tooltip("旧版房间列表 UI。主路径走 NetworkRoomService；仅当场景仍引用时用于兼容。")]
     public RoomListController roomListController;
 
+    const float PingTimeoutSeconds = 1f;
+    const float PingRetestInterval = 2f;
+
     private UdpClient udpClient;
+    private UdpClient pingResponder;
+    private UdpClient pingClient;
     private bool isBroadcasting = false;
     private bool isListening = false;
+    private bool isPingResponding = false;
     private Coroutine broadcastCoroutine;
 
-    private Queue<Action> mainThreadActions = new Queue<Action>();
+    private readonly Queue<Action> mainThreadActions = new Queue<Action>();
+    private readonly Dictionary<string, RoomItemData> roomCache = new Dictionary<string, RoomItemData>();
+    private readonly Dictionary<int, PendingPing> pendingPings = new Dictionary<int, PendingPing>();
+    private readonly Dictionary<string, int> pendingPingsByServerId = new Dictionary<string, int>();
+    private readonly Dictionary<string, float> lastPingAttemptAt = new Dictionary<string, float>();
+    private int nextPingToken;
+
+    struct PendingPing
+    {
+        public string serverId;
+        public long sentAtUtcTicks;
+    }
+
+    int EffectivePingPort => pingPort > 0 ? pingPort : broadcastPort + 1;
 
     void Update()
     {
@@ -54,6 +75,7 @@ public class ManualDiscovery : MonoBehaviour
         if (isBroadcasting) return;
 
         isBroadcasting = true;
+        StartPingResponder();
         broadcastCoroutine = StartCoroutine(BroadcastCoroutine());
         Debug.Log("开始局域网广播");
     }
@@ -66,6 +88,7 @@ public class ManualDiscovery : MonoBehaviour
             StopCoroutine(broadcastCoroutine);
             broadcastCoroutine = null;
         }
+        StopPingResponder();
         Debug.Log("停止局域网广播");
     }
 
@@ -142,6 +165,7 @@ public class ManualDiscovery : MonoBehaviour
         {
             udpClient = new UdpClient(broadcastPort);
             udpClient.BeginReceive(OnReceive, null);
+            StartPingClient();
             Debug.Log("开始监听局域网广播");
             return true;
         }
@@ -149,6 +173,7 @@ public class ManualDiscovery : MonoBehaviour
         {
             Debug.LogError($"监听启动失败：{e.Message}");
             isListening = false;
+            StopPingClient();
             return false;
         }
     }
@@ -160,6 +185,141 @@ public class ManualDiscovery : MonoBehaviour
         {
             udpClient.Close();
             udpClient = null;
+        }
+        StopPingClient();
+    }
+
+    void StartPingResponder()
+    {
+        if (isPingResponding) return;
+
+        try
+        {
+            pingResponder = new UdpClient(EffectivePingPort);
+            isPingResponding = true;
+            pingResponder.BeginReceive(OnPingResponderReceive, null);
+            Debug.Log($"开始 Ping 应答监听：{EffectivePingPort}");
+        }
+        catch (Exception e)
+        {
+            Debug.LogError($"Ping 应答启动失败：{e.Message}");
+            StopPingResponder();
+        }
+    }
+
+    void StopPingResponder()
+    {
+        isPingResponding = false;
+        if (pingResponder != null)
+        {
+            pingResponder.Close();
+            pingResponder = null;
+        }
+    }
+
+    void StartPingClient()
+    {
+        if (pingClient != null) return;
+
+        try
+        {
+            pingClient = new UdpClient(0);
+            pingClient.BeginReceive(OnPingClientReceive, null);
+        }
+        catch (Exception e)
+        {
+            Debug.LogError($"Ping 客户端启动失败：{e.Message}");
+            StopPingClient();
+        }
+    }
+
+    void StopPingClient()
+    {
+        pendingPings.Clear();
+        pendingPingsByServerId.Clear();
+        lastPingAttemptAt.Clear();
+
+        if (pingClient != null)
+        {
+            pingClient.Close();
+            pingClient = null;
+        }
+    }
+
+    void OnPingResponderReceive(IAsyncResult result)
+    {
+        if (!isPingResponding || pingResponder == null) return;
+
+        try
+        {
+            IPEndPoint remote = new IPEndPoint(IPAddress.Any, 0);
+            byte[] bytes = pingResponder.EndReceive(result, ref remote);
+            string data = Encoding.UTF8.GetString(bytes);
+
+            if (data.StartsWith("PING|", StringComparison.Ordinal))
+            {
+                string token = data.Substring(5);
+                byte[] pong = Encoding.UTF8.GetBytes($"PONG|{token}");
+                pingResponder.Send(pong, pong.Length, remote);
+            }
+
+            pingResponder.BeginReceive(OnPingResponderReceive, null);
+        }
+        catch (Exception e)
+        {
+            Debug.LogWarning($"Ping 应答跳过：{e.Message}");
+            try
+            {
+                if (isPingResponding && pingResponder != null)
+                    pingResponder.BeginReceive(OnPingResponderReceive, null);
+            }
+            catch
+            {
+                // 忽略
+            }
+        }
+    }
+
+    void OnPingClientReceive(IAsyncResult result)
+    {
+        if (pingClient == null) return;
+
+        try
+        {
+            IPEndPoint remote = new IPEndPoint(IPAddress.Any, 0);
+            byte[] bytes = pingClient.EndReceive(result, ref remote);
+            string data = Encoding.UTF8.GetString(bytes);
+
+            if (data.StartsWith("PONG|", StringComparison.Ordinal) &&
+                int.TryParse(data.Substring(5), out int token) &&
+                pendingPings.TryGetValue(token, out PendingPing pending))
+            {
+                pendingPings.Remove(token);
+                pendingPingsByServerId.Remove(pending.serverId);
+
+                double elapsedMs = (DateTime.UtcNow.Ticks - pending.sentAtUtcTicks) / (double)TimeSpan.TicksPerMillisecond;
+                float pingMs = Mathf.Round((float)elapsedMs * 10f) / 10f;
+
+                lock (mainThreadActions)
+                {
+                    mainThreadActions.Enqueue(() => ApplyPingResult(pending.serverId, pingMs));
+                }
+            }
+
+            pingClient.BeginReceive(OnPingClientReceive, null);
+        }
+        catch (Exception e)
+        {
+            Debug.LogWarning($"Ping 响应跳过：{e.Message}");
+            try
+            {
+                if (pingClient != null)
+                    pingClient.BeginReceive(OnPingClientReceive, null);
+            }
+            catch
+            {
+                // 忽略
+            }
         }
     }
 
@@ -197,6 +357,10 @@ public class ManualDiscovery : MonoBehaviour
 
             Debug.Log($"发现房间：{roomName} @ {ipAddress} ({currentPlayers}/{maxPlayers}人)");
 
+            float existingPing = -1f;
+            if (roomCache.TryGetValue(serverId, out RoomItemData cached) && cached.ping >= 0f)
+                existingPing = cached.ping;
+
             RoomItemData discovered = new RoomItemData
             {
                 serverId = serverId,
@@ -208,30 +372,17 @@ public class ManualDiscovery : MonoBehaviour
                 maxPlayers = maxPlayers,
                 status = status,
                 gameMode = gameMode,
-                ping = UnityEngine.Random.Range(5f, 50f)
+                ping = existingPing
             };
+
+            roomCache[serverId] = discovered;
 
             lock (mainThreadActions)
             {
                 mainThreadActions.Enqueue(() =>
                 {
-                    // 权威路径：契约房间服务
-                    NetworkRoomService.Instance?.ReportDiscoveredRoom(discovered);
-
-                    // 可选兼容：旧 UI（LobbyScene 仍可能挂着引用）
-                    if (roomListController != null)
-                    {
-                        roomListController.AddRoom(
-                            discovered.serverId,
-                            discovered.ipAddress,
-                            discovered.port,
-                            discovered.roomName,
-                            discovered.hostName,
-                            discovered.currentPlayers,
-                            discovered.maxPlayers,
-                            discovered.status,
-                            discovered.gameMode);
-                    }
+                    ReportRoom(discovered);
+                    TrySendPing(discovered);
                 });
             }
 
@@ -252,10 +403,83 @@ public class ManualDiscovery : MonoBehaviour
         }
     }
 
+    void ReportRoom(RoomItemData discovered)
+    {
+        NetworkRoomService.Instance?.ReportDiscoveredRoom(discovered);
+
+        if (roomListController != null)
+        {
+            roomListController.AddRoom(
+                discovered.serverId,
+                discovered.ipAddress,
+                discovered.port,
+                discovered.roomName,
+                discovered.hostName,
+                discovered.currentPlayers,
+                discovered.maxPlayers,
+                discovered.status,
+                discovered.gameMode,
+                discovered.ping);
+        }
+    }
+
+    void TrySendPing(RoomItemData room)
+    {
+        if (!isListening || pingClient == null || room == null) return;
+        if (string.IsNullOrEmpty(room.ipAddress) || string.IsNullOrEmpty(room.serverId)) return;
+        if (pendingPingsByServerId.ContainsKey(room.serverId)) return;
+
+        if (lastPingAttemptAt.TryGetValue(room.serverId, out float lastAttempt) &&
+            Time.unscaledTime - lastAttempt < PingRetestInterval)
+            return;
+
+        if (!IPAddress.TryParse(room.ipAddress, out IPAddress targetIp))
+            return;
+
+        int token = ++nextPingToken;
+        lastPingAttemptAt[room.serverId] = Time.unscaledTime;
+        pendingPings[token] = new PendingPing
+        {
+            serverId = room.serverId,
+            sentAtUtcTicks = DateTime.UtcNow.Ticks
+        };
+        pendingPingsByServerId[room.serverId] = token;
+
+        try
+        {
+            byte[] bytes = Encoding.UTF8.GetBytes($"PING|{token}");
+            pingClient.Send(bytes, bytes.Length, new IPEndPoint(targetIp, EffectivePingPort));
+            StartCoroutine(PingTimeoutCoroutine(token, room.serverId));
+        }
+        catch (Exception e)
+        {
+            pendingPings.Remove(token);
+            pendingPingsByServerId.Remove(room.serverId);
+            Debug.LogWarning($"Ping 发送失败 {room.serverId}：{e.Message}");
+        }
+    }
+
+    IEnumerator PingTimeoutCoroutine(int token, string serverId)
+    {
+        yield return new WaitForSecondsRealtime(PingTimeoutSeconds);
+        if (pendingPings.Remove(token))
+            pendingPingsByServerId.Remove(serverId);
+    }
+
+    void ApplyPingResult(string serverId, float pingMs)
+    {
+        if (!roomCache.TryGetValue(serverId, out RoomItemData room)) return;
+
+        room.ping = pingMs;
+        roomCache[serverId] = room;
+        ReportRoom(room);
+    }
+
     void OnDestroy()
     {
         StopBroadcasting();
         StopListening();
+        roomCache.Clear();
     }
 
     /// <summary>读取 Mirror Transport 游戏端口（与 JoinRoom / Host 监听同源）。</summary>
