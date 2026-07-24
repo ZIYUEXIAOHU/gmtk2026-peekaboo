@@ -910,6 +910,10 @@ MonoBehaviour:
   playerName: "\u73A9\u5BB6"
   isReady: 0
   connectionId: -1
+  role: 0
+  hiderState: 0
+  disguiseItemId: -1
+  isRoomHost: 0
 --- !u!4 &118223757
 Transform:
   m_ObjectHideFlags: 0
