@@ -737,7 +737,7 @@ MonoBehaviour:
   offlineScene: 
   onlineScene: 
   offlineSceneLoadDelay: 0
-  playerPrefab: {fileID: 3922214107978572470, guid: 5e0cb24e74aa16e4e970b4c0d514eb5a, type: 3}
+  playerPrefab: {fileID: 3922214107978572470, guid: e462b546f0f4fdd4f9896bb968fbf239, type: 3}
   autoCreatePlayer: 1
   playerSpawnMethod: 0
   spawnPrefabs: []
@@ -910,6 +910,10 @@ MonoBehaviour:
   playerName: "\u73A9\u5BB6"
   isReady: 0
   connectionId: -1
+  role: 0
+  hiderState: 0
+  disguiseItemId: -1
+  isRoomHost: 0
 --- !u!4 &118223757
 Transform:
   m_ObjectHideFlags: 0

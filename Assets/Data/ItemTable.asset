@@ -12,4 +12,13 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 3f8a2b1c9d4e4f60a7b5c8d2e1f0a934, type: 3}
   m_Name: ItemTable
   m_EditorClassIdentifier: 
-  items: []
+  items:
+  - displayName: Placeholder A
+    prefab: {fileID: 2000000001, guid: d5e6f7a8b9c04d1e2f3a4b5c6d7e8f90, type: 3}
+    icon: {fileID: 0}
+  - displayName: Placeholder B
+    prefab: {fileID: 2000000001, guid: d5e6f7a8b9c04d1e2f3a4b5c6d7e8f90, type: 3}
+    icon: {fileID: 0}
+  - displayName: Placeholder C
+    prefab: {fileID: 2000000001, guid: d5e6f7a8b9c04d1e2f3a4b5c6d7e8f90, type: 3}
+    icon: {fileID: 0}
