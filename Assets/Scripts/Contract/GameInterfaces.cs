@@ -64,8 +64,9 @@ public interface IPlayerStateReadonly
 
 /// <summary>程序 2 → 程序 1 的操作请求。程序 1 负责全部合法性校验，程序 2 不做权威判断。
 /// 所有命令均为异步：结果通过 Events 回来，被拒绝时发 OnCommandRejected（PlaceItem 例外，走 OnPlaceResult）。
-/// 注意：AD 左右移动、W 跳跃、S 跳下均不走本接口，
-/// 由角色控制器 + Mirror 位置同步处理；抓捕者的空格键用于劈砍。
+/// 注意：躲藏者使用 AD 左右移动、空格跳跃、空格 + S 跳下；抓捕者使用 AD 左右移动，
+/// 不可跳跃，只能在可互动楼梯处按 W 上下楼，空格键用于劈砍。这些移动操作不走本接口，
+/// 由角色控制器 + Mirror 位置同步处理。
 /// 队友视角不走本接口：纯本地镜头行为，程序 2 从 State.Players 筛选存活躲藏者即可。</summary>
 public interface IGameCommands
 {
