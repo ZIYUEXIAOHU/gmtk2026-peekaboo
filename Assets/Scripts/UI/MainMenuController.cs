@@ -12,12 +12,12 @@ public class MainMenuController : MonoBehaviour
     [Header("右侧 - 创建游戏")]
     public Button createGameBtn;
     public GameObject createPanel;
-    public GameObject rightPanel;  // ← 添加 RightPanel 引用
+    public GameObject rightPanel;
     
     [Header("状态")]
     public TextMeshProUGUI statusText;
     
-    private bool isJoinModeActive = false;
+    private bool isJoinModeActive = true;   // ← 默认 true
     private bool isCreateModeActive = false;
     
     void Start()
@@ -25,30 +25,26 @@ public class MainMenuController : MonoBehaviour
         joinGameBtn.onClick.AddListener(ToggleJoinMode);
         createGameBtn.onClick.AddListener(ToggleCreateMode);
         
-        SetAllPanelsActive(false);
+        // ===== 默认显示 LeftPanel =====
+        SetJoinModeActive(true);
+        SetCreateModeActive(false);
         
-        // 始终显示两个按钮
         ShowBothButtons();
         
-        statusText.text = "选择「加入游戏」或「创建游戏」";
+        statusText.text = "📋 选择房间加入，或点击右侧「创建游戏」";
     }
     
-    // ==================== 始终显示两个按钮 ====================
     public void ShowBothButtons()
     {
         joinGameBtn.gameObject.SetActive(true);
         createGameBtn.gameObject.SetActive(true);
     }
     
-    // ==================== 切换加入模式 ====================
     void ToggleJoinMode()
     {
         if (isJoinModeActive)
         {
-            SetJoinModeActive(false);
-            isJoinModeActive = false;
-            ShowBothButtons();
-            statusText.text = "已关闭房间列表";
+            // 如果已显示，不关闭（保持显示）
             return;
         }
         
@@ -58,7 +54,6 @@ public class MainMenuController : MonoBehaviour
         SetJoinModeActive(true);
         SetCreateModeActive(false);
         
-        // 两个按钮都显示
         ShowBothButtons();
         
         statusText.text = "📋 选择房间加入，或点击右侧「创建游戏」";
@@ -70,15 +65,11 @@ public class MainMenuController : MonoBehaviour
         }
     }
     
-    // ==================== 切换创建模式 ====================
     void ToggleCreateMode()
     {
         if (isCreateModeActive)
         {
-            SetCreateModeActive(false);
-            isCreateModeActive = false;
-            ShowBothButtons();
-            statusText.text = "已关闭创建面板";
+            // 如果已显示，不关闭（保持显示）
             return;
         }
         
@@ -88,20 +79,17 @@ public class MainMenuController : MonoBehaviour
         SetCreateModeActive(true);
         SetJoinModeActive(false);
         
-        // 两个按钮都显示
         ShowBothButtons();
         
         statusText.text = "🏠 填写信息创建新房间";
     }
     
-    // ==================== 设置加入模式 ====================
     public void SetJoinModeActive(bool active)
     {
         isJoinModeActive = active;
         functionBar.SetActive(active);
         roomListScrollView.SetActive(active);
         
-        // ===== RoomListStatusText 跟随房间列表 =====
         RoomListController controller = FindObjectOfType<RoomListController>();
         if (controller != null && controller.listStatusText != null)
         {
@@ -114,20 +102,17 @@ public class MainMenuController : MonoBehaviour
         }
     }
     
-    // ==================== 设置创建模式 ====================
     public void SetCreateModeActive(bool active)
     {
         isCreateModeActive = active;
         createPanel.SetActive(active);
         
-        // ===== RightPanel 显示/隐藏 =====
         if (rightPanel != null)
         {
             rightPanel.SetActive(active);
         }
     }
     
-    // ==================== 更新状态文字 ====================
     public void UpdateStatusText(string text)
     {
         if (statusText != null)
@@ -136,7 +121,6 @@ public class MainMenuController : MonoBehaviour
         }
     }
     
-    // ==================== 全部隐藏 ====================
     void SetAllPanelsActive(bool active)
     {
         functionBar.SetActive(active);

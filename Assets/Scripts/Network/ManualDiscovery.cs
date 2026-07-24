@@ -20,7 +20,6 @@ public class ManualDiscovery : MonoBehaviour
     private bool isListening = false;
     private Coroutine broadcastCoroutine;
     
-    // 线程安全的队列
     private Queue<Action> mainThreadActions = new Queue<Action>();
     
     void Start()
@@ -30,17 +29,22 @@ public class ManualDiscovery : MonoBehaviour
     
     void Update()
     {
-        // 在主线程执行队列中的操作
         lock (mainThreadActions)
         {
             while (mainThreadActions.Count > 0)
             {
-                mainThreadActions.Dequeue()?.Invoke();
+                try
+                {
+                    mainThreadActions.Dequeue()?.Invoke();
+                }
+                catch (Exception e)
+                {
+                    Debug.LogWarning($"执行队列操作失败：{e.Message}");
+                }
             }
         }
     }
     
-    // ==================== 开始广播 ====================
     public void StartBroadcasting()
     {
         if (isBroadcasting) return;
@@ -100,7 +104,6 @@ public class ManualDiscovery : MonoBehaviour
         }
     }
     
-    // ==================== 开始监听 ====================
     public void StartListening()
     {
         if (isListening) return;
@@ -144,10 +147,18 @@ public class ManualDiscovery : MonoBehaviour
             
             string roomName = info[0];
             string hostName = info[1];
-            int currentPlayers = int.Parse(info[2]);
-            int maxPlayers = int.Parse(info[3]);
-            RoomStatus status = (RoomStatus)int.Parse(info[4]);
+            int currentPlayers;
+            int maxPlayers;
+            RoomStatus status;
             string gameMode = info[5];
+            
+            // ===== 添加解析异常处理 =====
+            if (!int.TryParse(info[2], out currentPlayers))
+                currentPlayers = 0;
+            if (!int.TryParse(info[3], out maxPlayers))
+                maxPlayers = 6;
+            if (!Enum.TryParse(info[4], out status))
+                status = RoomStatus.Idle;
             
             string ipAddress = endPoint.Address.ToString();
             int port = 7777;
@@ -155,10 +166,10 @@ public class ManualDiscovery : MonoBehaviour
             
             Debug.Log($"发现房间：{roomName} @ {ipAddress} ({currentPlayers}/{maxPlayers}人)");
             
-            // ===== 修复：通过主线程队列更新UI =====
             lock (mainThreadActions)
             {
                 mainThreadActions.Enqueue(() => {
+                    // ===== 添加空值检查 =====
                     if (roomListController != null)
                     {
                         roomListController.AddRoom(serverId, ipAddress, port, roomName, 
@@ -168,21 +179,14 @@ public class ManualDiscovery : MonoBehaviour
                 });
             }
             
-            // 继续监听
             udpClient.BeginReceive(OnReceive, null);
         }
         catch (Exception e)
         {
-            // ===== 修复：错误信息也通过主线程队列输出 =====
-            string errorMsg = e.Message;
-            lock (mainThreadActions)
-            {
-                mainThreadActions.Enqueue(() => {
-                    Debug.LogError($"接收数据失败：{errorMsg}");
-                });
-            }
+            // ===== 静默处理，不输出错误 =====
+            // 只输出警告信息，不中断
+            Debug.LogWarning($"接收数据跳过：{e.Message}");
             
-            // 继续监听
             try
             {
                 udpClient.BeginReceive(OnReceive, null);
