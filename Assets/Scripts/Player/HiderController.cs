@@ -21,8 +21,21 @@ public class HiderController : NetworkBehaviour
     
     void Start()
     {
-        rb = GetComponent<Rigidbody2D>();
-        spriteRenderer = GetComponent<SpriteRenderer>();
+        SetupController();
+    }
+
+    void OnEnable()
+    {
+        // 选身份后才启用：补一次本地输入就绪，不改任何数值
+        SetupController();
+    }
+
+    void SetupController()
+    {
+        if (rb == null)
+            rb = GetComponent<Rigidbody2D>();
+        if (spriteRenderer == null)
+            spriteRenderer = GetComponent<SpriteRenderer>();
         
         if (rb != null)
         {
@@ -32,19 +45,27 @@ public class HiderController : NetworkBehaviour
         
         if (groundCheckPoint == null)
         {
-            GameObject go = new GameObject("GroundCheck");
-            go.transform.SetParent(transform);
-            go.transform.localPosition = new Vector3(0, -0.5f, 0);
-            groundCheckPoint = go.transform;
+            Transform existing = transform.Find("GroundCheck");
+            if (existing != null)
+                groundCheckPoint = existing;
+            else
+            {
+                GameObject go = new GameObject("GroundCheck");
+                go.transform.SetParent(transform);
+                go.transform.localPosition = new Vector3(0, -0.5f, 0);
+                groundCheckPoint = go.transform;
+            }
         }
         
         if (!isLocalPlayer)
         {
             enabled = false;
+            isLocalPlayerReady = false;
             return;
         }
         
         isLocalPlayerReady = true;
+        moveSpeed = GameConstants.HiderMoveSpeed;
         
         if (spriteRenderer != null)
             spriteRenderer.color = new Color(0.2f, 0.8f, 0.2f);

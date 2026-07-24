@@ -71,9 +71,9 @@ public interface IPlayerStateReadonly
 public interface IGameCommands
 {
     // ---- 小队房间 ----
-    /// <summary>选择身份。拒绝原因：RoleFull / InvalidRole。</summary>
+    /// <summary>选择身份；传 PlayerRole.None 表示取消选择。拒绝原因：RoleFull / InvalidRole。</summary>
     void SelectRole(PlayerRole role);
-    /// <summary>房主开始游戏。拒绝原因：NotHost / NotEnoughPlayers。</summary>
+    /// <summary>房主开始游戏。拒绝原因：NotHost / NotEnoughPlayers / PlayersNotReady。</summary>
     void HostStartGame();
 
     // ---- 躲藏者 ----

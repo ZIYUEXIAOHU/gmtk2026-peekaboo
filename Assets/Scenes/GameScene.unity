@@ -10281,8 +10281,8 @@ MonoBehaviour:
   readyBtn: {fileID: 1013575098}
   startGameBtn: {fileID: 1199456331}
   reselectBtn: {fileID: 902194178}
-  hiderUI: {fileID: 0}
-  seekerUI: {fileID: 0}
+  hiderUI: {fileID: 134103984}
+  seekerUI: {fileID: 1170356714}
 --- !u!114 &1611870816
 MonoBehaviour:
   m_ObjectHideFlags: 0

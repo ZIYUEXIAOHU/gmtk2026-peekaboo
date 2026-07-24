@@ -130,13 +130,11 @@ public class CreateRoomController : MonoBehaviour
             }
         }
         
-        // ===== 不管事件，直接延迟跳转 =====
-        createStatusText.text = $"✅ 房间 \"{roomName}\" 创建成功！({maxPlayers}人)";
+        createStatusText.text = $"✅ 房间 \"{roomName}\" 创建成功！正在进入选角场景...";
         createStatusText.color = Color.green;
         
-        Debug.Log($"房间创建成功：{roomName}，最大人数：{maxPlayers}");
-        
-        // 延迟进入游戏场景
+        Debug.Log($"房间创建成功：{roomName}，最大人数：{maxPlayers}，即将进入选角场景");
+
         StartCoroutine(DelayedEnterGameScene());
     }
     
@@ -147,20 +145,19 @@ public class CreateRoomController : MonoBehaviour
         if (mainMenuController != null)
         {
             mainMenuController.SetCreateModeActive(false);
-            mainMenuController.UpdateStatusText("🎮 进入游戏...");
+            mainMenuController.UpdateStatusText("🎮 进入选角场景...");
         }
         
         createStatusText.gameObject.SetActive(false);
         
-        // 跳转到游戏场景
         if (netManager != null && !string.IsNullOrEmpty(netManager.gameScene))
         {
-            Debug.Log("🚀 进入游戏场景");
+            Debug.Log("进入选角场景");
             netManager.ServerChangeScene(netManager.gameScene);
         }
         else
         {
-            Debug.LogWarning("⚠️ netManager 或 gameScene 为空，无法跳转");
+            Debug.LogWarning("netManager 或 gameScene 为空，无法跳转");
         }
     }
     

@@ -140,6 +140,15 @@ public class CustomNetworkManager : NetworkManager
         }
         return true;
     }
+
+    /// <summary>
+    /// 移除已销毁引用，并按 connectionId 去重，避免切场景重建玩家后 roomPlayers 翻倍。
+    /// </summary>
+    void RegisterRoomPlayer(RoomPlayer rp)
+    {
+        roomPlayers.RemoveAll(p => p == null || p.connectionId == rp.connectionId);
+        roomPlayers.Add(rp);
+    }
     
     public override void OnServerAddPlayer(NetworkConnectionToClient conn)
     {
@@ -179,9 +188,10 @@ public class CustomNetworkManager : NetworkManager
 
         NetworkServer.AddPlayerForConnection(conn, player);
 
-        roomPlayers.Add(rp);
+        RegisterRoomPlayer(rp);
         UpdatePlayerListUI();
         NetworkGameState.Instance?.ServerNotifyRoleSlotsChanged();
+        NetworkGameState.Instance?.ServerSendRoleSlotsTo(conn);
 
         Debug.Log($"🎮 玩家 {conn.connectionId} 加入，当前人数：{roomPlayers.Count}");
     }
@@ -230,8 +240,7 @@ public class CustomNetworkManager : NetworkManager
 
         rp.transform.position = GetSpawnPosition(role);
 
-        if (!roomPlayers.Contains(rp))
-            roomPlayers.Add(rp);
+        RegisterRoomPlayer(rp);
 
         UpdatePlayerListUI();
         NetworkGameState.Instance?.ServerNotifyRoleSlotsChanged();

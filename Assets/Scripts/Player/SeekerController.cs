@@ -24,10 +24,21 @@ public class SeekerController : NetworkBehaviour
     
     void Start()
     {
-        rb = GetComponent<Rigidbody2D>();
-        spriteRenderer = GetComponent<SpriteRenderer>();
+        SetupController();
+    }
+
+    void OnEnable()
+    {
+        SetupController();
+    }
+
+    void SetupController()
+    {
+        if (rb == null)
+            rb = GetComponent<Rigidbody2D>();
+        if (spriteRenderer == null)
+            spriteRenderer = GetComponent<SpriteRenderer>();
         
-        // ===== 设置 Rigidbody2D =====
         if (rb != null)
         {
             rb.gravityScale = 3f;
@@ -36,27 +47,32 @@ public class SeekerController : NetworkBehaviour
         
         if (groundCheckPoint == null)
         {
-            GameObject go = new GameObject("GroundCheck");
-            go.transform.SetParent(transform);
-            go.transform.localPosition = new Vector3(0, -0.5f, 0);
-            groundCheckPoint = go.transform;
+            Transform existing = transform.Find("GroundCheck");
+            if (existing != null)
+                groundCheckPoint = existing;
+            else
+            {
+                GameObject go = new GameObject("GroundCheck");
+                go.transform.SetParent(transform);
+                go.transform.localPosition = new Vector3(0, -0.5f, 0);
+                groundCheckPoint = go.transform;
+            }
         }
         
         if (!isLocalPlayer)
         {
             Debug.Log("❌ SeekerController: 不是本地玩家，禁用控制");
             enabled = false;
+            isLocalPlayerReady = false;
             return;
         }
         
         isLocalPlayerReady = true;
+        moveSpeed = GameConstants.SeekerMoveSpeed * speedMultiplier;
         Debug.Log("✅ SeekerController: 本地玩家已就绪");
         
         if (spriteRenderer != null)
             spriteRenderer.color = new Color(0.9f, 0.3f, 0.2f);
-        
-        // ===== 应用速度倍率 =====
-        moveSpeed = GameConstants.SeekerMoveSpeed * speedMultiplier;
     }
     
     void Update()

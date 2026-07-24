@@ -176,6 +176,21 @@ public class NetworkGameState : NetworkBehaviour, IGameStateReadonly, IGameComma
         RpcRoleSlotsChanged(ComputeSlots());
     }
 
+    /// <summary>向指定连接补发当前名额（客户端场景/UI 晚于 Rpc 时兜底）。</summary>
+    [Server]
+    public void ServerSendRoleSlotsTo(NetworkConnectionToClient conn)
+    {
+        if (conn == null) return;
+        TargetRoleSlotsChanged(conn, ComputeSlots());
+    }
+
+    /// <summary>按当前房间人数重算身份上限（与 LobbyRoomController 规则一致）。</summary>
+    [Server]
+    void RecalculateRoleMaxFromPlayerCount(int totalPlayers)
+    {
+        ComputeRoleMax(totalPlayers, out seekerMax, out hiderMax);
+    }
+
     // ================================================================
     // IGameStateReadonly
     // ================================================================
@@ -273,6 +288,14 @@ public class NetworkGameState : NetworkBehaviour, IGameStateReadonly, IGameComma
             return;
         }
 
+        if (role == PlayerRole.None)
+        {
+            if (rp.role == PlayerRole.None) return;
+            ServerClearPlayerRole(rp);
+            RpcRoleSlotsChanged(ComputeSlots());
+            return;
+        }
+
         if (role != PlayerRole.Seeker && role != PlayerRole.Hider)
         {
             RejectCommand(sender, GameCommandType.SelectRole, RejectReason.InvalidRole);
@@ -312,6 +335,9 @@ public class NetworkGameState : NetworkBehaviour, IGameStateReadonly, IGameComma
             rp.disguiseItemId = GameConstants.InvalidItemId;
         }
 
+        if (rp.isRoomHost)
+            rp.isReady = true;
+
         // 2) 再触发 Event（全员）
         RpcRoleSlotsChanged(ComputeSlots());
     }
@@ -336,6 +362,13 @@ public class NetworkGameState : NetworkBehaviour, IGameStateReadonly, IGameComma
         if (!slots.CanStart)
         {
             RejectCommand(sender, GameCommandType.HostStartGame, RejectReason.NotEnoughPlayers);
+            return;
+        }
+
+        List<RoomPlayer> all = GetAllRoomPlayers();
+        if (all.Count < 2 || all.Any(p => p.role == PlayerRole.None || !p.isReady))
+        {
+            RejectCommand(sender, GameCommandType.HostStartGame, RejectReason.PlayersNotReady);
             return;
         }
 
@@ -1063,6 +1096,9 @@ public class NetworkGameState : NetworkBehaviour, IGameStateReadonly, IGameComma
     [ClientRpc]
     private void RpcRoleSlotsChanged(RoleSlots slots) => OnRoleSlotsChanged?.Invoke(slots);
 
+    [TargetRpc]
+    private void TargetRoleSlotsChanged(NetworkConnection target, RoleSlots slots) => OnRoleSlotsChanged?.Invoke(slots);
+
     [ClientRpc]
     private void RpcGameEnded(MatchResult matchResult) => OnGameEnded?.Invoke(matchResult);
 
@@ -1120,13 +1156,47 @@ public class NetworkGameState : NetworkBehaviour, IGameStateReadonly, IGameComma
     private RoleSlots ComputeSlots()
     {
         List<RoomPlayer> all = GetAllRoomPlayers();
+        ComputeRoleMax(all.Count, out int sMax, out int hMax);
+
+        if (isServer)
+        {
+            seekerMax = sMax;
+            hiderMax = hMax;
+        }
+
         return new RoleSlots
         {
             seekerCount = all.Count(p => p.role == PlayerRole.Seeker),
-            seekerMax = seekerMax,
+            seekerMax = sMax,
             hiderCount = all.Count(p => p.role == PlayerRole.Hider),
-            hiderMax = hiderMax,
+            hiderMax = hMax,
         };
+    }
+
+    static void ComputeRoleMax(int totalPlayers, out int seekerMaxOut, out int hiderMaxOut)
+    {
+        if (totalPlayers < 2)
+        {
+            seekerMaxOut = 1;
+            hiderMaxOut = 1;
+            return;
+        }
+
+        seekerMaxOut = Mathf.Max(1, totalPlayers / 3);
+        hiderMaxOut = totalPlayers - seekerMaxOut;
+        if (hiderMaxOut < 1) hiderMaxOut = 1;
+    }
+
+    [Server]
+    static void ServerClearPlayerRole(RoomPlayer rp)
+    {
+        if (rp == null || rp.role == PlayerRole.None) return;
+
+        rp.role = PlayerRole.None;
+        rp.isReady = false;
+        rp.itemQueue.Clear();
+        rp.hiderState = HiderState.Disguised;
+        rp.disguiseItemId = GameConstants.InvalidItemId;
     }
 
     private static RoomPlayer GetRoomPlayer(NetworkConnectionToClient sender)

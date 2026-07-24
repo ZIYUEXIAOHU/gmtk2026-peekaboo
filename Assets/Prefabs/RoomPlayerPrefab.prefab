@@ -15,6 +15,8 @@ GameObject:
   - component: {fileID: 6988699046148284263}
   - component: {fileID: 1952218338319265146}
   - component: {fileID: -7780064719975532859}
+  - component: {fileID: 710011001100110011}
+  - component: {fileID: 720022002200220022}
   m_Layer: 0
   m_Name: RoomPlayerPrefab
   m_TagString: Untagged
@@ -234,3 +236,55 @@ MonoBehaviour:
   playerName: "\u73A9\u5BB6"
   isReady: 0
   connectionId: -1
+  role: 0
+  hiderState: 0
+  disguiseItemId: -1
+  isRoomHost: 0
+--- !u!114 &710011001100110011
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3922214107978572470}
+  m_Enabled: 0
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 1b12fe68422981649a423a026994bc23, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  syncMethod: 0
+  syncDirection: 0
+  syncMode: 0
+  syncInterval: 0
+  moveSpeed: 0.3
+  jumpForce: 12
+  groundCheckRadius: 0.2
+  groundCheckPoint: {fileID: 0}
+  groundLayer:
+    serializedVersion: 2
+    m_Bits: 0
+--- !u!114 &720022002200220022
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3922214107978572470}
+  m_Enabled: 0
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: fd3fba4e05c2a6343a713ebf58d09a18, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  syncMethod: 0
+  syncDirection: 0
+  syncMode: 0
+  syncInterval: 0
+  moveSpeed: 0.5
+  speedMultiplier: 10
+  investigateRange: 1.5
+  slashRange: 1
+  groundCheckRadius: 0.2
+  groundCheckPoint: {fileID: 0}
+  groundLayer:
+    serializedVersion: 2
+    m_Bits: 0
