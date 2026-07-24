@@ -58,11 +58,18 @@ public class RoomPlayer : NetworkBehaviour, IPlayerStateReadonly
     void OnReadyChanged(bool oldVal, bool newVal)
     {
         Debug.Log($"玩家 {playerName} 准备状态: {newVal}");
+
+        LobbyRoomController lobby = FindObjectOfType<LobbyRoomController>();
+        if (lobby != null)
+            lobby.NotifyPlayerReadyChanged(this);
     }
 
     [Command]
     public void CmdToggleReady()
     {
+        if (!isReady && role == PlayerRole.None)
+            return;
+
         isReady = !isReady;
 
         CustomNetworkManager nm = FindObjectOfType<CustomNetworkManager>();

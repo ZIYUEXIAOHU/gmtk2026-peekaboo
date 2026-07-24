@@ -68,6 +68,7 @@ public enum RejectReason
     WrongPhase = 5,       // 当前阶段不允许该操作
     WrongRole = 6,        // 当前身份不允许该操作
     InvalidTarget = 7,    // 目标无效
+    PlayersNotReady = 8,  // 尚有玩家未选身份或未准备
 }
 
 /// <summary>房间连接状态。</summary>
