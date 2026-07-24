@@ -17,10 +17,4 @@ public class RoomItemData
     public float ping;              // 延迟(ms)
 }
 
-// 房间状态枚举
-public enum RoomStatus
-{
-    Idle,       // 空闲中 - 可以加入游戏
-    Playing,    // 游戏中 - 只能观战
-    Settling    // 结算中 - 只能观战
-}
+// RoomStatus 枚举已移至 Assets/Scripts/Contract/GameEnums.cs（契约共享类型）

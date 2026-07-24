@@ -1,0 +1,36 @@
+// ============================================================
+// 契约文件：数值常量（唯一定义处，两个程序都从这里引用）
+// 修改规则：改动需双方确认
+// ============================================================
+
+public static class GameConstants
+{
+    // ---- 移动 ----
+    public const float HiderMoveSpeed = 0.3f;
+    public const float SeekerMoveSpeed = 0.5f;
+
+    // ---- 阶段时长（秒）----
+    public const float PrepDuration = 40f;    // 躲藏者准备阶段
+    public const float MatchDuration = 250f;  // 正式对局
+
+    // ---- 躲藏者随机变化 ----
+    public const float TransformInterval = 50f;             // 每 50 秒变身一次
+    public const float InvulnerableDuration = 3f;           // 变身后隐身无敌 3 秒
+
+    // ---- 抓捕者心跳（数值可调，但只在此处改）----
+    public const float HeartbeatInterval = 1.0f;  // 节奏间隔
+    public const float HeartbeatRadius = 2.0f;    // 影响半径
+
+    // ---- 交互范围（数值可调，但只在此处改）----
+    public const float InvestigateRange = 1.5f;   // F 调查的搜索/高亮范围
+    public const float SlashRange = 1.0f;         // 空格劈砍范围
+
+    // ---- 鬼魂 ----
+    // 鬼魂恢复时机 = 下一次随机变化，无独立时长；此处不定义恢复时间
+
+    // ---- ID 约定（详见 接口契约.md「ID 约定」）----
+    /// <summary>itemId 无效值。有效 itemId = 共享物品表（ItemTable，双方引用同一份资产）中的索引。</summary>
+    public const int InvalidItemId = -1;
+    /// <summary>netId 无效值。所有可调查物体必须有 Mirror NetworkIdentity。</summary>
+    public const uint InvalidNetId = 0;
+}
