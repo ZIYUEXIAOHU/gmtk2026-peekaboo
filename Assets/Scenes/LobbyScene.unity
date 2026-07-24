@@ -777,6 +777,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   broadcastPort: 47777
+  pingPort: 0
   broadcastInterval: 2
   roomListController: {fileID: 2059618432}
 --- !u!4 &113338884

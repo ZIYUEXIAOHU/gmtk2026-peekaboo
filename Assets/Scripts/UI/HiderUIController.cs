@@ -12,11 +12,18 @@ public class HiderUIController : MonoBehaviour
     public TextMeshProUGUI placeHintText;
     
     [Header("物品栏")]
-    public Transform inventoryParent;      // 物品栏父物体（直接放格子）
-    public GameObject itemSlotPrefab;      // ItemSlotPrefab 预制体
+    public Transform inventoryParent;
+    public GameObject itemSlotPrefab;
     public int maxSlots = 5;
     public float slotSize = 50f;
     public float slotSpacing = 10f;
+    
+    [Header("观战 UI")]
+    public GameObject observerUI;               // 观战面板
+    public TextMeshProUGUI observerNameText;    // 观战者名字
+    public TextMeshProUGUI observerStatusText;  // 观战者状态
+    public Button observerPrevBtn;              // 上一个
+    public Button observerNextBtn;              // 下一个
     
     [Header("颜色")]
     public Color disguisedColor = new Color(0.2f, 0.8f, 0.2f);
@@ -28,6 +35,11 @@ public class HiderUIController : MonoBehaviour
     private List<Image> slotHighlights = new List<Image>();
     private List<GameObject> slotObjects = new List<GameObject>();
     private ItemTable itemTable;
+    
+    // ===== 观战相关 =====
+    private List<IPlayerStateReadonly> aliveHiders = new List<IPlayerStateReadonly>();
+    private int currentObserverIndex = 0;
+    private bool isObserving = false;
     
     void Start()
     {
@@ -41,6 +53,15 @@ public class HiderUIController : MonoBehaviour
             placeHintText.gameObject.SetActive(true);
         
         InitializeInventory();
+        
+        // ===== 初始化观战 UI =====
+        if (observerUI != null)
+            observerUI.SetActive(false);
+        
+        if (observerPrevBtn != null)
+            observerPrevBtn.onClick.AddListener(OnPrevObserver);
+        if (observerNextBtn != null)
+            observerNextBtn.onClick.AddListener(OnNextObserver);
     }
     
     void InitializeInventory()
@@ -138,14 +159,146 @@ public class HiderUIController : MonoBehaviour
         }
     }
     
-    // ==================== 更新躲藏者 UI ====================
-    public void UpdateHiderUI(IPlayerStateReadonly playerState)
+    // ==================== 更新躲藏者 UI（遵循契约） ====================
+    public void UpdateHiderUI(IPlayerStateReadonly playerState, IReadOnlyList<IPlayerStateReadonly> allPlayers)
     {
         if (playerState == null) return;
-        UpdateHiderState(playerState.HiderState);
-        UpdateInventory(playerState.ItemQueue);
+        
+        // 检查是否被捕获（遵循契约 HiderState.Captured）
+        bool isCaptured = (playerState.HiderState == HiderState.Captured);
+        
+        if (isCaptured)
+        {
+            EnterObserverMode(allPlayers);
+        }
+        else
+        {
+            ExitObserverMode();
+            UpdateHiderState(playerState.HiderState);
+            UpdateInventory(playerState.ItemQueue);
+        }
     }
     
+    // ==================== 观战模式 ====================
+    void EnterObserverMode(IReadOnlyList<IPlayerStateReadonly> allPlayers)
+    {
+        isObserving = true;
+        
+        // 隐藏正常 UI
+        if (placeHintText != null)
+            placeHintText.gameObject.SetActive(false);
+        if (inventoryParent != null)
+            inventoryParent.gameObject.SetActive(false);
+        if (transformTimer != null)
+            transformTimer.gameObject.SetActive(false);
+        
+        // 状态文字改为 "⚫ 已捕获 - 观战中"
+        if (hiderStateText != null)
+        {
+            hiderStateText.text = "⚫ 已捕获 - 观战中";
+            hiderStateText.color = capturedColor;
+        }
+        if (disguiseStatusIcon != null)
+            disguiseStatusIcon.color = capturedColor;
+        
+        // 收集存活的躲藏者（遵循契约 PlayerRole.Hider 和 HiderState.Captured）
+        aliveHiders.Clear();
+        if (allPlayers != null)
+        {
+            foreach (var player in allPlayers)
+            {
+                if (player != null && 
+                    player.Role == PlayerRole.Hider && 
+                    player.HiderState != HiderState.Captured)
+                {
+                    aliveHiders.Add(player);
+                }
+            }
+        }
+        
+        if (aliveHiders.Count > 0)
+        {
+            currentObserverIndex = 0;
+            ShowObserverUI(true);
+            UpdateObserverTarget();
+        }
+        else
+        {
+            ShowObserverUI(false);
+            if (observerNameText != null)
+                observerNameText.text = "无存活队友";
+            if (observerStatusText != null)
+                observerStatusText.text = "游戏结束";
+        }
+    }
+    
+    void ExitObserverMode()
+    {
+        isObserving = false;
+        ShowObserverUI(false);
+        
+        // 恢复正常 UI
+        if (placeHintText != null)
+            placeHintText.gameObject.SetActive(true);
+        if (inventoryParent != null)
+            inventoryParent.gameObject.SetActive(true);
+        if (transformTimer != null)
+            transformTimer.gameObject.SetActive(true);
+    }
+    
+    void ShowObserverUI(bool show)
+    {
+        if (observerUI != null)
+            observerUI.SetActive(show);
+    }
+    
+    void UpdateObserverTarget()
+    {
+        if (aliveHiders.Count == 0 || currentObserverIndex >= aliveHiders.Count)
+        {
+            if (observerNameText != null)
+                observerNameText.text = "无存活队友";
+            if (observerStatusText != null)
+                observerStatusText.text = "游戏结束";
+            return;
+        }
+        
+        IPlayerStateReadonly target = aliveHiders[currentObserverIndex];
+        if (target == null) return;
+        
+        if (observerNameText != null)
+            observerNameText.text = target.PlayerName;
+        
+        if (observerStatusText != null)
+        {
+            bool isAlive = (target.HiderState != HiderState.Captured);
+            observerStatusText.text = isAlive ? "🟢 存活" : "🔴 已捕获";
+            observerStatusText.color = isAlive ? new Color(0.2f, 0.8f, 0.2f) : Color.red;
+        }
+        
+        if (observerPrevBtn != null)
+            observerPrevBtn.interactable = (currentObserverIndex > 0);
+        if (observerNextBtn != null)
+            observerNextBtn.interactable = (currentObserverIndex < aliveHiders.Count - 1);
+    }
+    
+    void OnPrevObserver()
+    {
+        if (aliveHiders.Count == 0) return;
+        currentObserverIndex = (currentObserverIndex - 1 + aliveHiders.Count) % aliveHiders.Count;
+        UpdateObserverTarget();
+        Debug.Log($"👁️ 切换到上一个观战目标: {aliveHiders[currentObserverIndex].PlayerName}");
+    }
+    
+    void OnNextObserver()
+    {
+        if (aliveHiders.Count == 0) return;
+        currentObserverIndex = (currentObserverIndex + 1) % aliveHiders.Count;
+        UpdateObserverTarget();
+        Debug.Log($"👁️ 切换到下一个观战目标: {aliveHiders[currentObserverIndex].PlayerName}");
+    }
+    
+    // ==================== 更新形态状态（遵循契约） ====================
     void UpdateHiderState(HiderState state)
     {
         if (hiderStateText == null || disguiseStatusIcon == null) return;
@@ -153,6 +306,7 @@ public class HiderUIController : MonoBehaviour
         string stateText = "";
         Color stateColor = Color.white;
         
+        // 遵循契约 HiderState 枚举
         switch (state)
         {
             case HiderState.Disguised:
@@ -168,7 +322,7 @@ public class HiderUIController : MonoBehaviour
                 stateColor = ghostColor;
                 break;
             case HiderState.Captured:
-                stateText = "⚫ 已捕获";
+                stateText = "⚫ 已捕获 - 观战中";
                 stateColor = capturedColor;
                 break;
             default:
@@ -186,15 +340,24 @@ public class HiderUIController : MonoBehaviour
     {
         if (transformTimer == null) return;
         
+        // 观战时不显示变身倒计时
+        if (isObserving)
+        {
+            transformTimer.gameObject.SetActive(false);
+            return;
+        }
+        
         if (timeLeft > 0)
         {
             transformTimer.text = $"⏳ 变身: {Mathf.CeilToInt(timeLeft)}s";
             transformTimer.color = Color.white;
+            transformTimer.gameObject.SetActive(true);
         }
         else
         {
             transformTimer.text = "⏳ 准备变身...";
             transformTimer.color = Color.yellow;
+            transformTimer.gameObject.SetActive(true);
         }
     }
     
@@ -210,7 +373,7 @@ public class HiderUIController : MonoBehaviour
     
     public void SetPlaceHint(bool show)
     {
-        if (placeHintText != null)
+        if (placeHintText != null && !isObserving)
             placeHintText.gameObject.SetActive(show);
     }
 }
