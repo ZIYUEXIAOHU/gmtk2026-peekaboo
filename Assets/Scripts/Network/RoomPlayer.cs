@@ -66,6 +66,14 @@ public class RoomPlayer : NetworkBehaviour, IPlayerStateReadonly
         ApplyRoleControllers(role);
     }
 
+    public override void OnStartServer()
+    {
+        base.OnStartServer();
+        CacheVisuals();
+        // 服务器 Spawn 前/后都需隐藏未选身份外观（Visual_Seeker 保持 Active）
+        ApplyRoleVisuals(role);
+    }
+
     public override void OnStartLocalPlayer()
     {
         base.OnStartLocalPlayer();
@@ -120,7 +128,9 @@ public class RoomPlayer : NetworkBehaviour, IPlayerStateReadonly
     }
 
     /// <summary>
-    /// 按身份切换 Hider/Seeker 外观子物体（所有客户端）。
+    /// 按身份切换 Hider/Seeker 外观（所有客户端）。
+    /// 注意：Visual_Seeker 上有 Mirror.NetworkAnimator，不能 SetActive(false)，
+    /// 否则 Spawn 时 Awake/Initialize 未跑、parameters 为空，会 OnSerialize NRE + OnDeserialize 流截断。
     /// </summary>
     void ApplyRoleVisuals(PlayerRole currentRole)
     {
@@ -131,8 +141,28 @@ public class RoomPlayer : NetworkBehaviour, IPlayerStateReadonly
 
         if (visualHider != null)
             visualHider.SetActive(showHider);
+
         if (visualSeeker != null)
-            visualSeeker.SetActive(showSeeker);
+        {
+            // 保持 GameObject 激活，供 NetworkAnimator 初始化与同步
+            if (!visualSeeker.activeSelf)
+                visualSeeker.SetActive(true);
+
+            SetVisualRenderable(visualSeeker, showSeeker);
+        }
+    }
+
+    static void SetVisualRenderable(GameObject visual, bool visible)
+    {
+        if (visual == null) return;
+
+        var sr = visual.GetComponent<SpriteRenderer>();
+        if (sr != null)
+            sr.enabled = visible;
+
+        var anim = visual.GetComponent<Animator>();
+        if (anim != null)
+            anim.enabled = visible;
     }
 
     void OnPlayerNameChanged(string oldVal, string newVal)

@@ -138,6 +138,10 @@ public interface IRoomStateReadonly
     IReadOnlyList<RoomInfo> RoomList { get; }
     /// <summary>当前房间短码。未建房/已离开为空；房主创建后生成，客户端按码加入成功后为所输入的码。</summary>
     string CurrentRoomCode { get; }
+    /// <summary>FindRoomByCode 命中的房间；未找到时 HasValue=false。</summary>
+    RoomInfo? FoundRoom { get; }
+    /// <summary>进房前选择的身份偏好；未选为 None。</summary>
+    PlayerRole PreferredRole { get; }
 }
 
 /// <summary>程序 2（主菜单/局内菜单）→ 程序 1 的房间操作。</summary>
@@ -149,7 +153,13 @@ public interface IRoomCommands
     void CreateRoom(string roomName, int maxPlayers);
     /// <summary>加入指定房间（serverId 来自 RoomInfo.serverId）。</summary>
     void JoinRoom(string serverId);
-    /// <summary>按局域网短码寻找房间并加入（监听广播匹配 roomCode 后走 JoinRoom）。</summary>
+    /// <summary>按短码寻找房间（不 StartClient）。结果经 FoundRoom / OnFoundRoomChanged。</summary>
+    void FindRoomByCode(string roomCode);
+    /// <summary>进房前选择身份。满员返回 false 并 OnRoomError(SlotFull)。</summary>
+    bool TrySelectRoleBeforeEnter(PlayerRole role);
+    /// <summary>加入已找到的房间（需已 Find 且已选身份）。</summary>
+    void JoinFoundRoom();
+    /// <summary>兼容：按短码寻找并加入（若已选身份则命中后自动 JoinFoundRoom）。</summary>
     void JoinRoomByCode(string roomCode);
     /// <summary>离开房间/断开连接，回主菜单（局内 ESC「返回主菜单」也走这里）。</summary>
     void LeaveRoom();
@@ -162,6 +172,8 @@ public interface IRoomEvents
     event Action<RoomConnectionState> OnConnectionStateChanged;
     /// <summary>房间列表刷新完成。</summary>
     event Action<IReadOnlyList<RoomInfo>> OnRoomListUpdated;
+    /// <summary>FindRoomByCode 命中或清空时触发（null 表示清空）。</summary>
+    event Action<RoomInfo?> OnFoundRoomChanged;
     /// <summary>房间操作失败（刷新/创建/加入），程序 2 按 RoomError.reason 弹提示。</summary>
     event Action<RoomError> OnRoomError;
 }

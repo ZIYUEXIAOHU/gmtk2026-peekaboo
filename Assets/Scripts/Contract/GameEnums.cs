@@ -87,6 +87,7 @@ public enum RoomOp
     Refresh = 1,
     Create = 2,
     Join = 3,
+    Find = 4,     // FindRoomByCode / 进房前选身份
 }
 
 /// <summary>房间状态（房间列表条目用；原定义在 Data/RoomItemData.cs，为使契约自包含移到此处）。</summary>
@@ -106,4 +107,6 @@ public enum RoomErrorReason
     RoomFull = 3,         // 房间已满
     ConnectionFailed = 4, // 网络连接失败
     AlreadyInRoom = 5,    // 已在房间中重复操作
+    SlotFull = 6,         // 身份名额已满（UI 显示「XX已满」类提示，非字面 slotfull）
+    RoleNotSelected = 7,  // 进房前未选择身份
 }

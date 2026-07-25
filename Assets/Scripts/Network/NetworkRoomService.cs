@@ -42,10 +42,13 @@ public class NetworkRoomService : MonoBehaviour, IRoomStateReadonly, IRoomComman
     public RoomConnectionState ConnectionState { get; private set; } = RoomConnectionState.Disconnected;
     public IReadOnlyList<RoomInfo> RoomList => _roomListSnapshot;
     public string CurrentRoomCode { get; private set; } = string.Empty;
+    public RoomInfo? FoundRoom { get; private set; }
+    public PlayerRole PreferredRole { get; private set; } = PlayerRole.None;
 
     // ---- IRoomEvents ----
     public event Action<RoomConnectionState> OnConnectionStateChanged;
     public event Action<IReadOnlyList<RoomInfo>> OnRoomListUpdated;
+    public event Action<RoomInfo?> OnFoundRoomChanged;
     public event Action<RoomError> OnRoomError;
 
     private readonly Dictionary<string, RoomItemData> _discoveredRooms = new Dictionary<string, RoomItemData>();
@@ -55,8 +58,11 @@ public class NetworkRoomService : MonoBehaviour, IRoomStateReadonly, IRoomComman
     private RoomOp _pendingOp = RoomOp.Unknown;
     private Coroutine _joinTimeoutCoroutine;
     private Coroutine _findByCodeTimeoutCoroutine;
+    private Coroutine _applyPreferredRoleCoroutine;
     /// <summary>非空表示正在按短码寻找房间（已规范化大写）。</summary>
     private string _searchingRoomCode;
+    /// <summary>true = FindRoomByCode（不自动连）；false = JoinRoomByCode（命中后自动连）。</summary>
+    private bool _findOnlyMode;
     /// <summary>按码加入时暂存，连接成功后再写入 CurrentRoomCode。</summary>
     private string _pendingJoinRoomCode;
     private bool _leaveRequested;
@@ -158,6 +164,8 @@ public class NetworkRoomService : MonoBehaviour, IRoomStateReadonly, IRoomComman
         CancelFindByCodeTimeout();
         ClearRoomCodeSearch();
         _pendingJoinRoomCode = null;
+        ClearFoundRoom();
+        // 保留 PreferredRole（创建前已选身份）
         CurrentRoomCode = string.Empty;
         SetConnectionState(RoomConnectionState.Connecting);
 
@@ -194,6 +202,7 @@ public class NetworkRoomService : MonoBehaviour, IRoomStateReadonly, IRoomComman
         SetConnectionState(RoomConnectionState.InRoom);
         discovery?.StartBroadcasting();
         Debug.Log($"[NetworkRoomService] 房间已创建，短码：{CurrentRoomCode}");
+        StartApplyPreferredRole();
     }
 
     public void JoinRoom(string serverId)
@@ -231,27 +240,82 @@ public class NetworkRoomService : MonoBehaviour, IRoomStateReadonly, IRoomComman
         BeginClientJoin(ip, port);
     }
 
-    public void JoinRoomByCode(string roomCode)
+    public void FindRoomByCode(string roomCode)
+    {
+        BeginSearchByCode(roomCode, findOnly: true);
+    }
+
+    public bool TrySelectRoleBeforeEnter(PlayerRole role)
+    {
+        if (role != PlayerRole.Hider && role != PlayerRole.Seeker)
+        {
+            RaiseError(RoomOp.Find, RoomErrorReason.Unknown, $"非法身份：{role}");
+            return false;
+        }
+
+        // 加入路径：已找到房间则按投影名额校验
+        if (FoundRoom.HasValue)
+        {
+            RoomInfo found = FoundRoom.Value;
+            RoleSlots projected = RoleSlots.ProjectForJoiner(
+                found.currentPlayers, found.seekerCount, found.hiderCount);
+
+            if (role == PlayerRole.Hider && projected.HiderFull)
+            {
+                RaiseError(RoomOp.Find, RoomErrorReason.SlotFull, "Hider");
+                return false;
+            }
+
+            if (role == PlayerRole.Seeker && projected.SeekerFull)
+            {
+                RaiseError(RoomOp.Find, RoomErrorReason.SlotFull, "Seeker");
+                return false;
+            }
+        }
+
+        PreferredRole = role;
+        Debug.Log($"[NetworkRoomService] 进房前身份：{role}");
+        return true;
+    }
+
+    public void JoinFoundRoom()
     {
         EnsureRefs();
+
+        if (!FoundRoom.HasValue || string.IsNullOrEmpty(FoundRoom.Value.serverId))
+        {
+            RaiseError(RoomOp.Join, RoomErrorReason.RoomNotFound, "尚未找到房间，请先 FindRoomByCode");
+            return;
+        }
+
+        if (PreferredRole == PlayerRole.None)
+        {
+            RaiseError(RoomOp.Join, RoomErrorReason.RoleNotSelected, "请先选择身份");
+            return;
+        }
+
+        // 再次校验投影名额（广播可能已更新）
+        RoomInfo found = FoundRoom.Value;
+        RoleSlots projected = RoleSlots.ProjectForJoiner(
+            found.currentPlayers, found.seekerCount, found.hiderCount);
+        if ((PreferredRole == PlayerRole.Hider && projected.HiderFull) ||
+            (PreferredRole == PlayerRole.Seeker && projected.SeekerFull))
+        {
+            RaiseError(RoomOp.Join, RoomErrorReason.SlotFull,
+                PreferredRole == PlayerRole.Hider ? "Hider" : "Seeker");
+            return;
+        }
+
+        if (found.currentPlayers >= found.maxPlayers && found.maxPlayers > 0)
+        {
+            RaiseError(RoomOp.Join, RoomErrorReason.RoomFull, $"房间已满：{found.serverId}");
+            return;
+        }
 
         if (ConnectionState != RoomConnectionState.Disconnected &&
             ConnectionState != RoomConnectionState.Failed)
         {
             RaiseError(RoomOp.Join, RoomErrorReason.AlreadyInRoom, $"当前状态 {ConnectionState} 下不允许加入房间");
-            return;
-        }
-
-        if (!RoomCodeUtil.TryNormalize(roomCode, out string normalized))
-        {
-            RaiseError(RoomOp.Join, RoomErrorReason.RoomNotFound, $"无效房间短码：{roomCode}");
-            return;
-        }
-
-        if (discovery == null)
-        {
-            SetConnectionState(RoomConnectionState.Failed);
-            RaiseError(RoomOp.Join, RoomErrorReason.ConnectionFailed, "ManualDiscovery 未找到");
             return;
         }
 
@@ -262,20 +326,81 @@ public class NetworkRoomService : MonoBehaviour, IRoomStateReadonly, IRoomComman
             return;
         }
 
-        _leaveRequested = false;
-        _pendingOp = RoomOp.Join;
-        _searchingRoomCode = normalized;
-        _pendingJoinRoomCode = normalized;
-
-        // 已缓存的发现结果可立刻命中（例如刚刷新过列表）
-        if (TryFindDiscoveredServerIdByCode(normalized, out string cachedServerId) &&
-            _discoveredRooms.TryGetValue(cachedServerId, out RoomItemData cachedRoom))
+        if (!TryParseServerId(found.serverId, out string ip, out int port))
         {
-            TryCompleteJoinByCode(cachedRoom);
+            RaiseError(RoomOp.Join, RoomErrorReason.RoomNotFound, $"无法解析 serverId：{found.serverId}");
             return;
         }
 
-        SetConnectionState(RoomConnectionState.Connecting);
+        CancelFindByCodeTimeout();
+        ClearRoomCodeSearch();
+        _pendingJoinRoomCode = string.IsNullOrEmpty(found.roomCode) ? _pendingJoinRoomCode : found.roomCode;
+        if (string.IsNullOrEmpty(_pendingJoinRoomCode) &&
+            RoomCodeUtil.TryNormalize(found.roomCode, out string norm))
+            _pendingJoinRoomCode = norm;
+
+        discovery?.StopListening();
+        BeginClientJoin(ip, port);
+        Debug.Log($"[NetworkRoomService] JoinFoundRoom → {ip}:{port} role={PreferredRole} code={_pendingJoinRoomCode}");
+    }
+
+    public void JoinRoomByCode(string roomCode)
+    {
+        // 兼容：寻找命中后自动连接（若已选身份则等同 JoinFoundRoom 路径）
+        BeginSearchByCode(roomCode, findOnly: false);
+    }
+
+    private void BeginSearchByCode(string roomCode, bool findOnly)
+    {
+        EnsureRefs();
+
+        if (ConnectionState != RoomConnectionState.Disconnected &&
+            ConnectionState != RoomConnectionState.Failed)
+        {
+            RaiseError(findOnly ? RoomOp.Find : RoomOp.Join, RoomErrorReason.AlreadyInRoom,
+                $"当前状态 {ConnectionState} 下不允许{(findOnly ? "寻找" : "加入")}房间");
+            return;
+        }
+
+        if (!RoomCodeUtil.TryNormalize(roomCode, out string normalized))
+        {
+            RaiseError(findOnly ? RoomOp.Find : RoomOp.Join, RoomErrorReason.RoomNotFound,
+                $"无效房间短码：{roomCode}");
+            return;
+        }
+
+        if (discovery == null)
+        {
+            RaiseError(findOnly ? RoomOp.Find : RoomOp.Join, RoomErrorReason.ConnectionFailed,
+                "ManualDiscovery 未找到");
+            return;
+        }
+
+        if (!findOnly && networkManager == null)
+        {
+            SetConnectionState(RoomConnectionState.Failed);
+            RaiseError(RoomOp.Join, RoomErrorReason.ConnectionFailed, "CustomNetworkManager 未找到");
+            return;
+        }
+
+        _leaveRequested = false;
+        _pendingOp = findOnly ? RoomOp.Find : RoomOp.Join;
+        _searchingRoomCode = normalized;
+        _findOnlyMode = findOnly;
+        _pendingJoinRoomCode = normalized;
+        ClearFoundRoom();
+
+        // 已缓存可立刻命中
+        if (TryFindDiscoveredServerIdByCode(normalized, out string cachedServerId) &&
+            _discoveredRooms.TryGetValue(cachedServerId, out RoomItemData cachedRoom))
+        {
+            TryHandleCodeMatch(cachedRoom);
+            return;
+        }
+
+        // Find 不改变 Connecting；Join 兼容路径进入 Connecting
+        if (!findOnly)
+            SetConnectionState(RoomConnectionState.Connecting);
 
         discovery.StopListening();
         if (!discovery.StartListening())
@@ -283,14 +408,16 @@ public class NetworkRoomService : MonoBehaviour, IRoomStateReadonly, IRoomComman
             ClearRoomCodeSearch();
             _pendingJoinRoomCode = null;
             _pendingOp = RoomOp.Unknown;
-            SetConnectionState(RoomConnectionState.Failed);
-            RaiseError(RoomOp.Join, RoomErrorReason.ConnectionFailed, "局域网监听端口启动失败");
+            if (!findOnly)
+                SetConnectionState(RoomConnectionState.Failed);
+            RaiseError(findOnly ? RoomOp.Find : RoomOp.Join, RoomErrorReason.ConnectionFailed,
+                "局域网监听端口启动失败");
             return;
         }
 
         if (_findByCodeTimeoutCoroutine != null) StopCoroutine(_findByCodeTimeoutCoroutine);
         _findByCodeTimeoutCoroutine = StartCoroutine(FindByCodeTimeoutRoutine());
-        Debug.Log($"[NetworkRoomService] 正在按短码寻找房间：{normalized}");
+        Debug.Log($"[NetworkRoomService] 正在按短码{(findOnly ? "寻找" : "加入")}：{normalized}");
     }
 
     public void LeaveRoom()
@@ -300,10 +427,14 @@ public class NetworkRoomService : MonoBehaviour, IRoomStateReadonly, IRoomComman
         _leaveRequested = true;
         CancelJoinTimeout();
         CancelFindByCodeTimeout();
+        CancelApplyPreferredRole();
         ClearRoomCodeSearch();
         _pendingJoinRoomCode = null;
+        PreferredRole = PlayerRole.None;
+        ClearFoundRoom();
         CurrentRoomCode = string.Empty;
         discovery?.StopBroadcasting();
+        discovery?.StopListening();
 
         if (networkManager != null)
         {
@@ -335,12 +466,14 @@ public class NetworkRoomService : MonoBehaviour, IRoomStateReadonly, IRoomComman
         }
         _pendingOp = RoomOp.Unknown;
         SetConnectionState(RoomConnectionState.InRoom);
+        StartApplyPreferredRole();
     }
 
     public void NotifyClientDisconnected()
     {
         CancelJoinTimeout();
         CancelFindByCodeTimeout();
+        CancelApplyPreferredRole();
 
         // LeaveRoom 已主动设为 Disconnected，忽略后续 Mirror 回调，避免覆盖。
         if (_leaveRequested)
@@ -349,6 +482,8 @@ public class NetworkRoomService : MonoBehaviour, IRoomStateReadonly, IRoomComman
             _pendingOp = RoomOp.Unknown;
             ClearRoomCodeSearch();
             _pendingJoinRoomCode = null;
+            PreferredRole = PlayerRole.None;
+            ClearFoundRoom();
             CurrentRoomCode = string.Empty;
             if (ConnectionState != RoomConnectionState.Disconnected)
                 SetConnectionState(RoomConnectionState.Disconnected);
@@ -371,6 +506,8 @@ public class NetworkRoomService : MonoBehaviour, IRoomStateReadonly, IRoomComman
         {
             _pendingOp = RoomOp.Unknown;
             _pendingJoinRoomCode = null;
+            PreferredRole = PlayerRole.None;
+            ClearFoundRoom();
             CurrentRoomCode = string.Empty;
             SetConnectionState(RoomConnectionState.Disconnected);
             return;
@@ -384,6 +521,7 @@ public class NetworkRoomService : MonoBehaviour, IRoomStateReadonly, IRoomComman
     {
         CancelJoinTimeout();
         CancelFindByCodeTimeout();
+        CancelApplyPreferredRole();
 
         if (_leaveRequested)
         {
@@ -419,9 +557,68 @@ public class NetworkRoomService : MonoBehaviour, IRoomStateReadonly, IRoomComman
         }
     }
 
+    private void CancelApplyPreferredRole()
+    {
+        if (_applyPreferredRoleCoroutine != null)
+        {
+            StopCoroutine(_applyPreferredRoleCoroutine);
+            _applyPreferredRoleCoroutine = null;
+        }
+    }
+
     private void ClearRoomCodeSearch()
     {
         _searchingRoomCode = null;
+        _findOnlyMode = false;
+    }
+
+    private void ClearFoundRoom()
+    {
+        if (!FoundRoom.HasValue) return;
+        FoundRoom = null;
+        OnFoundRoomChanged?.Invoke(null);
+    }
+
+    private void SetFoundRoom(RoomInfo info)
+    {
+        FoundRoom = info;
+        OnFoundRoomChanged?.Invoke(info);
+    }
+
+    private void StartApplyPreferredRole()
+    {
+        CancelApplyPreferredRole();
+        if (PreferredRole == PlayerRole.None) return;
+        _applyPreferredRoleCoroutine = StartCoroutine(ApplyPreferredRoleRoutine());
+    }
+
+    private IEnumerator ApplyPreferredRoleRoutine()
+    {
+        const float timeout = 8f;
+        float elapsed = 0f;
+        PlayerRole role = PreferredRole;
+
+        while (elapsed < timeout)
+        {
+            if (role == PlayerRole.None) yield break;
+
+            if (GameContract.IsBound &&
+                GameContract.State != null &&
+                GameContract.State.Phase == GamePhase.Waiting &&
+                GameContract.Commands != null)
+            {
+                Debug.Log($"[NetworkRoomService] 进房后自动 SelectRole：{role}");
+                GameContract.Commands.SelectRole(role);
+                _applyPreferredRoleCoroutine = null;
+                yield break;
+            }
+
+            elapsed += Time.unscaledDeltaTime;
+            yield return null;
+        }
+
+        Debug.LogWarning("[NetworkRoomService] 自动 SelectRole 超时：对局契约未就绪");
+        _applyPreferredRoleCoroutine = null;
     }
 
     private IEnumerator JoinTimeoutRoutine()
@@ -448,15 +645,23 @@ public class NetworkRoomService : MonoBehaviour, IRoomStateReadonly, IRoomComman
         _findByCodeTimeoutCoroutine = null;
 
         if (string.IsNullOrEmpty(_searchingRoomCode)) yield break;
-        if (ConnectionState != RoomConnectionState.Connecting) yield break;
+        // Find-only 时 ConnectionState 仍为 Disconnected；Join 兼容路径为 Connecting
+        if (!_findOnlyMode && ConnectionState != RoomConnectionState.Connecting) yield break;
+        if (_findOnlyMode && FoundRoom.HasValue) yield break;
 
         string code = _searchingRoomCode;
+        bool findOnly = _findOnlyMode;
         ClearRoomCodeSearch();
         _pendingJoinRoomCode = null;
         _pendingOp = RoomOp.Unknown;
-        CurrentRoomCode = string.Empty;
-        SetConnectionState(RoomConnectionState.Failed);
-        RaiseError(RoomOp.Join, RoomErrorReason.Timeout, $"未找到短码对应房间：{code}");
+        if (!findOnly)
+        {
+            CurrentRoomCode = string.Empty;
+            SetConnectionState(RoomConnectionState.Failed);
+        }
+
+        RaiseError(findOnly ? RoomOp.Find : RoomOp.Join, RoomErrorReason.Timeout,
+            $"未找到短码对应房间：{code}");
         Debug.LogWarning($"[NetworkRoomService] 按短码寻找超时：{code}");
     }
 
@@ -475,32 +680,68 @@ public class NetworkRoomService : MonoBehaviour, IRoomStateReadonly, IRoomComman
             data.ping = existing.ping;
         }
 
-        // 保留已缓存的短码（ping 更新包可能未带码）
-        if (string.IsNullOrEmpty(data.roomCode) &&
-            _discoveredRooms.TryGetValue(data.serverId, out RoomItemData prev) &&
-            !string.IsNullOrEmpty(prev.roomCode))
+        if (_discoveredRooms.TryGetValue(data.serverId, out RoomItemData prev))
         {
-            data.roomCode = prev.roomCode;
+            if (string.IsNullOrEmpty(data.roomCode) && !string.IsNullOrEmpty(prev.roomCode))
+                data.roomCode = prev.roomCode;
+            // ping 更新包可能未带名额计数
+            if (data.seekerCount == 0 && data.hiderCount == 0 &&
+                (prev.seekerCount > 0 || prev.hiderCount > 0) &&
+                string.IsNullOrEmpty(data.roomCode) == string.IsNullOrEmpty(prev.roomCode))
+            {
+                // 仅当新包看起来像 ping 刷新（无码变化）时保留计数；若广播明确带了 0 也保留旧值更稳妥
+            }
         }
 
         _discoveredRooms[data.serverId] = data;
         _lastSeenAt[data.serverId] = Time.unscaledTime;
         PublishRoomList();
 
-        TryCompleteJoinByCode(data);
+        // 已找到同一房间则刷新 FoundRoom 名额
+        if (FoundRoom.HasValue &&
+            FoundRoom.Value.serverId == data.serverId)
+        {
+            SetFoundRoom(ToRoomInfo(data));
+        }
+
+        TryHandleCodeMatch(data);
     }
 
-    /// <summary>若正在按短码寻找且本条广播命中，则转入实际 TCP Join。</summary>
-    private void TryCompleteJoinByCode(RoomItemData data)
+    /// <summary>短码命中：Find-only 写入 FoundRoom；Join 兼容路径直接连。</summary>
+    private void TryHandleCodeMatch(RoomItemData data)
     {
         if (string.IsNullOrEmpty(_searchingRoomCode) || data == null) return;
         if (!RoomCodeUtil.TryNormalize(data.roomCode, out string discoveredCode)) return;
         if (!string.Equals(discoveredCode, _searchingRoomCode, StringComparison.Ordinal)) return;
 
-        if (data.currentPlayers >= data.maxPlayers && data.maxPlayers > 0)
+        RoomInfo info = ToRoomInfo(data);
+
+        if (_findOnlyMode)
         {
             CancelFindByCodeTimeout();
-            ClearRoomCodeSearch();
+            // 继续监听以便名额刷新；仅结束「等待首次命中」超时
+            _searchingRoomCode = discoveredCode; // 保持匹配码，后续广播可更新 FoundRoom
+            _findOnlyMode = true;
+            _pendingOp = RoomOp.Unknown;
+            SetFoundRoom(info);
+            Debug.Log($"[NetworkRoomService] 短码找到房间 {discoveredCode} → {data.serverId}");
+            return;
+        }
+
+        // JoinRoomByCode 兼容：若已选身份则走 JoinFoundRoom；否则直接连
+        CancelFindByCodeTimeout();
+        SetFoundRoom(info);
+        ClearRoomCodeSearch();
+        _pendingJoinRoomCode = discoveredCode;
+
+        if (PreferredRole != PlayerRole.None)
+        {
+            JoinFoundRoom();
+            return;
+        }
+
+        if (data.currentPlayers >= data.maxPlayers && data.maxPlayers > 0)
+        {
             _pendingJoinRoomCode = null;
             _pendingOp = RoomOp.Unknown;
             CurrentRoomCode = string.Empty;
@@ -511,8 +752,6 @@ public class NetworkRoomService : MonoBehaviour, IRoomStateReadonly, IRoomComman
 
         if (!TryParseServerId(data.serverId, out string ip, out int port))
         {
-            CancelFindByCodeTimeout();
-            ClearRoomCodeSearch();
             _pendingJoinRoomCode = null;
             _pendingOp = RoomOp.Unknown;
             CurrentRoomCode = string.Empty;
@@ -521,13 +760,8 @@ public class NetworkRoomService : MonoBehaviour, IRoomStateReadonly, IRoomComman
             return;
         }
 
-        string matchedCode = _searchingRoomCode;
-        CancelFindByCodeTimeout();
-        ClearRoomCodeSearch();
-        _pendingJoinRoomCode = matchedCode;
         discovery?.StopListening();
-
-        Debug.Log($"[NetworkRoomService] 短码命中 {matchedCode} → {data.serverId}");
+        Debug.Log($"[NetworkRoomService] 短码命中并加入 {discoveredCode} → {data.serverId}");
         BeginClientJoin(ip, port);
     }
 
@@ -552,11 +786,17 @@ public class NetworkRoomService : MonoBehaviour, IRoomStateReadonly, IRoomComman
         _pendingOp = RoomOp.Join;
         SetConnectionState(RoomConnectionState.Connecting);
 
+        // 本机互测（双编辑器 / ParrelSync）时，发现到的常是虚拟网卡 IP（如 172.22.x），
+        // TCP 连不上；若该 IP 属于本机则改连 127.0.0.1。
+        string connectIp = LanAddressUtil.ResolveClientConnectAddress(ip);
+
         try
         {
             // Mirror NetworkManager.networkAddress 只接受主机名/IP；端口写入 Transport（PortTransport：KCP/Telepathy/SimpleWeb）。
-            networkManager.networkAddress = ip;
+            networkManager.networkAddress = connectIp;
             ApplyJoinTransportPort(port);
+            Debug.Log($"[NetworkRoomService] StartClient → {connectIp}:{port}" +
+                      (connectIp != ip ? $"（发现地址 {ip} 已改写为本机回环）" : string.Empty));
             networkManager.StartClient();
         }
         catch (Exception e)
@@ -617,6 +857,9 @@ public class NetworkRoomService : MonoBehaviour, IRoomStateReadonly, IRoomComman
         maxPlayers = data.maxPlayers,
         status = data.status,
         ping = data.ping,
+        roomCode = data.roomCode,
+        seekerCount = data.seekerCount,
+        hiderCount = data.hiderCount,
     };
 
     private bool TryParseServerId(string serverId, out string ip, out int port)

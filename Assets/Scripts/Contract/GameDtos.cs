@@ -17,6 +17,37 @@ public struct RoleSlots
     public bool HiderFull => hiderCount >= hiderMax;
     /// <summary>房主开局条件：至少 1 抓捕者 + 1 躲藏者。</summary>
     public bool CanStart => seekerCount >= 1 && hiderCount >= 1;
+
+    /// <summary>与 NetworkGameState 相同的名额上限算法（按房内总人数）。</summary>
+    public static void ComputeRoleMax(int totalPlayers, out int seekerMaxOut, out int hiderMaxOut)
+    {
+        if (totalPlayers < 2)
+        {
+            seekerMaxOut = 1;
+            hiderMaxOut = 1;
+            return;
+        }
+
+        seekerMaxOut = Mathf.Max(1, totalPlayers / 3);
+        hiderMaxOut = totalPlayers - seekerMaxOut;
+        if (hiderMaxOut < 1) hiderMaxOut = 1;
+    }
+
+    /// <summary>
+    /// 加入方进房前预览：按「当前人数 + 1」投影 max，count 用房内已选身份数。
+    /// </summary>
+    public static RoleSlots ProjectForJoiner(int currentPlayers, int seekerCount, int hiderCount)
+    {
+        int projectedTotal = Mathf.Max(1, currentPlayers + 1);
+        ComputeRoleMax(projectedTotal, out int sMax, out int hMax);
+        return new RoleSlots
+        {
+            seekerCount = Mathf.Max(0, seekerCount),
+            seekerMax = sMax,
+            hiderCount = Mathf.Max(0, hiderCount),
+            hiderMax = hMax,
+        };
+    }
 }
 
 /// <summary>放置物品的结果（成功则全员可见，失败只回给发起者）。</summary>
@@ -109,6 +140,13 @@ public struct RoomInfo
     public int maxPlayers;
     public RoomStatus status;  // 枚举定义在 GameEnums.cs
     public float ping;         // 延迟 ms
+    public string roomCode;    // 局域网短码（可空）
+    public int seekerCount;    // 已选抓捕者人数（广播）
+    public int hiderCount;     // 已选躲藏者人数（广播）
+
+    /// <summary>加入方用的投影名额（currentPlayers+1）；创建/列表展示也可用。</summary>
+    public RoleSlots ProjectedSlotsForJoiner =>
+        RoleSlots.ProjectForJoiner(currentPlayers, seekerCount, hiderCount);
 }
 
 /// <summary>对局结算。</summary>

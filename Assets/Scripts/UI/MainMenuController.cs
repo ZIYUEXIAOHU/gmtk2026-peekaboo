@@ -1,6 +1,7 @@
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
+using System.Collections;
 using System.Collections.Generic;
 using Mirror;
 
@@ -19,15 +20,22 @@ public class MainMenuController : MonoBehaviour
     public GameObject joinPanel;    // 加入面板
     public Button joinBtn;          // 加入确认按钮
     public Button joinBackBtn;      // 返回按钮
+    [Tooltip("短码输入（可复用原 SearchInputField）")]
+    public TMP_InputField roomCodeInput;
+    [Tooltip("可选：加入面板内躲藏者按钮；为空则用下方 hiderBtn")]
+    public Button joinHiderBtn;
+    [Tooltip("可选：加入面板内抓捕者按钮；为空则用下方 hunterBtn")]
+    public Button joinHunterBtn;
     
     [Header("创建游戏面板")]
     public GameObject createPanel;  // 创建面板
     public Button createBackBtn;    // 返回按钮
     
-    // ===== 身份选择按钮（创建面板内） =====
-    [Header("身份选择按钮（创建面板内）")]
+    [Header("身份选择按钮（创建/加入共用）")]
     public Button hiderBtn;         // 躲藏者按钮
     public Button hunterBtn;        // 抓捕者按钮
+    [Tooltip("身份按钮所在面板；为空则用 hiderBtn 的父物体")]
+    public GameObject roleSelectPanel;
     
     [Header("设置面板")]
     public GameObject settingsPanel;
@@ -45,11 +53,18 @@ public class MainMenuController : MonoBehaviour
     private RoomConnectionState currentConnectionState = RoomConnectionState.Disconnected;
     private CustomNetworkManager netManager;
     private ManualDiscovery discovery;
+    private bool _joinPanelOpen;
+    private bool _createPanelOpen;
+    
+    private bool _waitingCreateEnter;
+    private bool _roomEventsSubscribed;
     
     void Start()
     {
         netManager = FindObjectOfType<CustomNetworkManager>();
         discovery = FindObjectOfType<ManualDiscovery>();
+
+        EnsureJoinUiRefs();
         
         // ===== 主菜单按钮 =====
         if (joinGameBtn != null)
@@ -70,16 +85,19 @@ public class MainMenuController : MonoBehaviour
         
         if (joinBackBtn != null)
             joinBackBtn.onClick.AddListener(CloseJoinPanel);
+
+        if (roomCodeInput != null)
+            roomCodeInput.onEndEdit.AddListener(OnRoomCodeEndEdit);
         
         // ===== 创建面板按钮 =====
         if (createBackBtn != null)
             createBackBtn.onClick.AddListener(CloseCreatePanel);
         
         // ===== 身份选择按钮 =====
-        if (hiderBtn != null)
-            hiderBtn.onClick.AddListener(() => Debug.Log("选择躲藏者"));
-        if (hunterBtn != null)
-            hunterBtn.onClick.AddListener(() => Debug.Log("选择抓捕者"));
+        WireRoleButton(hiderBtn, PlayerRole.Hider);
+        WireRoleButton(hunterBtn, PlayerRole.Seeker);
+        WireRoleButton(joinHiderBtn, PlayerRole.Hider);
+        WireRoleButton(joinHunterBtn, PlayerRole.Seeker);
         
         // ===== 设置面板按钮 =====
         if (settingsBackBtn != null)
@@ -93,26 +111,97 @@ public class MainMenuController : MonoBehaviour
         if (sfxVolumeSlider != null)
             sfxVolumeSlider.onValueChanged.AddListener(OnSFXVolumeChanged);
         
-        SubscribeRoomEvents();
+        StartCoroutine(EnsureRoomEventsSubscribed());
         ShowMainMenu();
         LoadSettings();
+    }
+
+    void EnsureJoinUiRefs()
+    {
+        if (roomCodeInput == null && joinPanel != null)
+        {
+            roomCodeInput = joinPanel.GetComponentInChildren<TMP_InputField>(true);
+        }
+
+        if (joinHiderBtn == null) joinHiderBtn = hiderBtn;
+        if (joinHunterBtn == null) joinHunterBtn = hunterBtn;
+
+        if (roleSelectPanel == null && hiderBtn != null && hiderBtn.transform.parent != null)
+            roleSelectPanel = hiderBtn.transform.parent.gameObject;
+
+        SetRoleSelectVisible(false);
+    }
+
+    void SetRoleSelectVisible(bool visible)
+    {
+        if (roleSelectPanel == null)
+        {
+            Debug.LogWarning("[MainMenu] roleSelectPanel 未绑定，无法显示身份选择");
+            return;
+        }
+
+        roleSelectPanel.SetActive(visible);
+        if (visible)
+        {
+            roleSelectPanel.transform.SetAsLastSibling();
+            Debug.Log("[MainMenu] 身份选择面板已显示");
+        }
+    }
+
+    /// <summary>把身份面板挂到当前流程面板下，避免被全屏 Join/Create 挡住。</summary>
+    void AttachRoleSelectTo(GameObject hostPanel)
+    {
+        if (roleSelectPanel == null || hostPanel == null) return;
+        roleSelectPanel.transform.SetParent(hostPanel.transform, false);
+        var rt = roleSelectPanel.transform as RectTransform;
+        if (rt != null)
+        {
+            rt.anchorMin = new Vector2(0.5f, 0.5f);
+            rt.anchorMax = new Vector2(0.5f, 0.5f);
+            rt.pivot = new Vector2(0.5f, 0.5f);
+            // 放在短码输入下方、JOIN 按钮附近，避免偏出屏幕
+            rt.anchoredPosition = new Vector2(0f, -90f);
+            rt.sizeDelta = new Vector2(900f, 120f);
+        }
+    }
+
+    void WireRoleButton(Button btn, PlayerRole role)
+    {
+        if (btn == null) return;
+        btn.onClick.RemoveAllListeners();
+        btn.onClick.AddListener(() => OnSelectRoleClicked(role));
+    }
+
+    IEnumerator EnsureRoomEventsSubscribed()
+    {
+        float waited = 0f;
+        while (!GameContract.IsRoomBound && waited < 5f)
+        {
+            yield return null;
+            waited += Time.unscaledDeltaTime;
+        }
+
+        SubscribeRoomEvents();
+        if (!GameContract.IsRoomBound)
+            Debug.LogWarning("[MainMenu] 房间契约仍未绑定，加入/找房 UI 可能无响应");
     }
     
     void SubscribeRoomEvents()
     {
+        if (_roomEventsSubscribed || !GameContract.IsRoomBound) return;
+
         try
         {
-            if (GameContract.IsRoomBound)
-            {
-                GameContract.RoomEvents.OnConnectionStateChanged += OnConnectionStateChanged;
-                GameContract.RoomEvents.OnRoomListUpdated += OnRoomListUpdated;
-                GameContract.RoomEvents.OnRoomError += OnRoomError;
-                Debug.Log("✅ MainMenuController 订阅契约事件成功");
-            }
+            GameContract.RoomEvents.OnConnectionStateChanged += OnConnectionStateChanged;
+            GameContract.RoomEvents.OnRoomListUpdated += OnRoomListUpdated;
+            GameContract.RoomEvents.OnFoundRoomChanged += OnFoundRoomChanged;
+            GameContract.RoomEvents.OnRoomError += OnRoomError;
+            _roomEventsSubscribed = true;
+            Debug.Log("✅ MainMenuController 订阅契约事件成功");
         }
         catch (System.Exception e)
         {
-            Debug.LogWarning($"订阅契约事件失败：{e.Message}");
+            Debug.LogWarning($"订阅房间事件失败：{e.Message}");
         }
     }
     
@@ -131,6 +220,20 @@ public class MainMenuController : MonoBehaviour
         
         if (statusText != null)
             statusText.text = statusMsg;
+
+        if (state == RoomConnectionState.InRoom && GameContract.IsRoomBound)
+        {
+            string code = GameContract.RoomState.CurrentRoomCode;
+            if (!string.IsNullOrEmpty(code) && statusText != null)
+                statusText.text = $"✅ 已在房间，短码：{code}";
+
+            if (_waitingCreateEnter)
+                StartCoroutine(DelayedEnterGameScene());
+        }
+        else if (state == RoomConnectionState.Failed)
+        {
+            _waitingCreateEnter = false;
+        }
     }
     
     void OnRoomListUpdated(IReadOnlyList<RoomInfo> roomList)
@@ -138,6 +241,55 @@ public class MainMenuController : MonoBehaviour
         RoomListController controller = FindObjectOfType<RoomListController>();
         if (controller != null)
             controller.UpdateRoomList(roomList);
+    }
+
+    void OnFoundRoomChanged(RoomInfo? room)
+    {
+        if (!_joinPanelOpen) return;
+        RefreshJoinRoleUiFromState(room);
+    }
+
+    /// <summary>
+    /// 找房成功后才弹出身份；未找到则保持隐藏。
+    /// </summary>
+    void RefreshJoinRoleUiFromState(RoomInfo? room = null)
+    {
+        if (!_joinPanelOpen) return;
+
+        if (!room.HasValue && GameContract.IsRoomBound)
+            room = GameContract.RoomState.FoundRoom;
+
+        if (!room.HasValue)
+        {
+            SetRoleSelectVisible(false);
+            RefreshJoinRoleButtons(default);
+            return;
+        }
+
+        ShowJoinRoleSelect();
+
+        RoomInfo info = room.Value;
+        RoleSlots projected = RoleSlots.ProjectForJoiner(
+            info.currentPlayers, info.seekerCount, info.hiderCount);
+        RefreshJoinRoleButtons(projected);
+
+        Debug.Log(
+            $"[MainMenu] JOIN 后显示身份选择 code={info.roomCode} " +
+            $"H{projected.hiderCount}/{projected.hiderMax} S{projected.seekerCount}/{projected.seekerMax}");
+
+        if (GameContract.RoomState.PreferredRole != PlayerRole.None)
+        {
+            TryJoinFoundRoomNow();
+            return;
+        }
+
+        if (statusText != null)
+        {
+            statusText.text =
+                $"✅ 找到房间「{info.roomName}」 短码 {info.roomCode}\n" +
+                $"请点 HIDER / HUNTER（躲藏 {projected.hiderCount}/{projected.hiderMax}，" +
+                $"抓捕 {projected.seekerCount}/{projected.seekerMax}）";
+        }
     }
     
     void OnRoomError(RoomError error)
@@ -149,6 +301,10 @@ public class MainMenuController : MonoBehaviour
             RoomErrorReason.RoomFull => "👥 房间已满",
             RoomErrorReason.ConnectionFailed => "🔌 网络连接失败",
             RoomErrorReason.AlreadyInRoom => "⚠️ 已在房间中",
+            RoomErrorReason.SlotFull => error.message == "Seeker"
+                ? "⚠️ 抓捕者已满！"
+                : "⚠️ 躲藏者已满！",
+            RoomErrorReason.RoleNotSelected => "⚠️ 请先选择身份",
             _ => $"❌ 操作失败：{error.message}"
         };
         
@@ -161,11 +317,13 @@ public class MainMenuController : MonoBehaviour
     {
         try
         {
-            if (GameContract.IsRoomBound)
+            if (_roomEventsSubscribed && GameContract.IsRoomBound)
             {
                 GameContract.RoomEvents.OnConnectionStateChanged -= OnConnectionStateChanged;
                 GameContract.RoomEvents.OnRoomListUpdated -= OnRoomListUpdated;
+                GameContract.RoomEvents.OnFoundRoomChanged -= OnFoundRoomChanged;
                 GameContract.RoomEvents.OnRoomError -= OnRoomError;
+                _roomEventsSubscribed = false;
             }
         }
         catch { }
@@ -173,6 +331,9 @@ public class MainMenuController : MonoBehaviour
     
     public void ShowMainMenu()
     {
+        _joinPanelOpen = false;
+        _createPanelOpen = false;
+
         if (joinPanel != null) joinPanel.SetActive(false);
         if (createPanel != null) createPanel.SetActive(false);
         if (settingsPanel != null) settingsPanel.SetActive(false);
@@ -182,11 +343,16 @@ public class MainMenuController : MonoBehaviour
         
         if (statusText != null)
             statusText.text = "🎮 欢迎来到躲猫猫！";
+
+        SetRoleSelectVisible(false);
     }
     
     // ==================== 加入游戏 ====================
     void OpenJoinPanel()
     {
+        _joinPanelOpen = true;
+        _createPanelOpen = false;
+
         if (joinPanel != null) joinPanel.SetActive(true);
         if (createPanel != null) createPanel.SetActive(false);
         if (settingsPanel != null) settingsPanel.SetActive(false);
@@ -195,32 +361,225 @@ public class MainMenuController : MonoBehaviour
             mainMenuPanel.SetActive(false);
         
         if (statusText != null)
-            statusText.text = "📋 选择房间加入";
-        
-        if (GameContract.IsRoomBound)
-            GameContract.RoomCommands.RefreshRoomList();
-        else
-        {
-            RoomListController roomList = FindObjectOfType<RoomListController>();
-            if (roomList != null)
-                roomList.RefreshRoomList();
-        }
+            statusText.text = "📋 输入房间短码，点 JOIN 后再选身份";
+
+        AttachRoleSelectTo(joinPanel);
+        // 点 JOIN 找房成功后再显示身份
+        SetRoleSelectVisible(false);
+        RefreshJoinRoleButtons(default);
     }
     
     void CloseJoinPanel()
     {
+        _joinPanelOpen = false;
         if (joinPanel != null) joinPanel.SetActive(false);
         ShowMainMenu();
+    }
+
+    void OnRoomCodeEndEdit(string _)
+    {
+        if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter))
+            TryFindRoomByCodeInput();
     }
     
     void OnJoinClicked()
     {
-        Debug.Log("加入房间");
+        if (!GameContract.IsRoomBound)
+        {
+            if (statusText != null) statusText.text = "❌ 房间服务未就绪";
+            return;
+        }
+
+        // 尚未找到房间：先按短码查找，找到后再弹出身份
+        if (!GameContract.RoomState.FoundRoom.HasValue)
+        {
+            TryFindRoomByCodeInput();
+            return;
+        }
+
+        if (GameContract.RoomState.PreferredRole == PlayerRole.None)
+        {
+            ShowJoinRoleSelect();
+            if (statusText != null) statusText.text = "⚠️ 请先点 HIDER 或 HUNTER";
+            return;
+        }
+
+        TryJoinFoundRoomNow();
+    }
+
+    void TryJoinFoundRoomNow()
+    {
+        if (!GameContract.IsRoomBound) return;
+        if (!GameContract.RoomState.FoundRoom.HasValue) return;
+        if (GameContract.RoomState.PreferredRole == PlayerRole.None) return;
+
+        if (statusText != null) statusText.text = "⏳ 正在加入房间...";
+        GameContract.RoomCommands.JoinFoundRoom();
+    }
+
+    void TryFindRoomByCodeInput()
+    {
+        if (!GameContract.IsRoomBound)
+        {
+            if (statusText != null) statusText.text = "❌ 房间服务未就绪";
+            return;
+        }
+
+        string code = roomCodeInput != null ? roomCodeInput.text : string.Empty;
+        if (string.IsNullOrWhiteSpace(code))
+        {
+            if (statusText != null) statusText.text = "⚠️ 请输入房间短码";
+            return;
+        }
+
+        if (statusText != null) statusText.text = $"⏳ 正在查找短码 {code.Trim().ToUpperInvariant()}...";
+        GameContract.RoomCommands.FindRoomByCode(code);
+        // 缓存同步命中时立刻弹身份；异步发现由事件/协程补刷
+        RefreshJoinRoleUiFromState();
+        StartCoroutine(WatchFoundRoomAfterSearch());
+    }
+
+    IEnumerator WatchFoundRoomAfterSearch()
+    {
+        float waited = 0f;
+        while (_joinPanelOpen && waited < 8f)
+        {
+            if (GameContract.IsRoomBound && GameContract.RoomState.FoundRoom.HasValue)
+            {
+                RefreshJoinRoleUiFromState();
+                yield break;
+            }
+            yield return null;
+            waited += Time.unscaledDeltaTime;
+        }
+    }
+
+    void ShowJoinRoleSelect()
+    {
+        AttachRoleSelectTo(joinPanel);
+        SetRoleSelectVisible(true);
+    }
+
+    void OnSelectRoleClicked(PlayerRole role)
+    {
+        if (!GameContract.IsRoomBound)
+        {
+            if (statusText != null) statusText.text = "❌ 房间服务未就绪";
+            return;
+        }
+
+        // 加入面板且已找到房间：本地先拦满员
+        if (_joinPanelOpen && GameContract.RoomState.FoundRoom.HasValue)
+        {
+            RoomInfo found = GameContract.RoomState.FoundRoom.Value;
+            RoleSlots projected = RoleSlots.ProjectForJoiner(
+                found.currentPlayers, found.seekerCount, found.hiderCount);
+            if (role == PlayerRole.Hider && projected.HiderFull)
+            {
+                if (statusText != null) statusText.text = "⚠️ 躲藏者已满！";
+                return;
+            }
+            if (role == PlayerRole.Seeker && projected.SeekerFull)
+            {
+                if (statusText != null) statusText.text = "⚠️ 抓捕者已满！";
+                return;
+            }
+        }
+
+        if (!GameContract.RoomCommands.TrySelectRoleBeforeEnter(role))
+            return;
+
+        string name = role == PlayerRole.Hider ? "躲藏者" : "抓捕者";
+        if (statusText != null)
+            statusText.text = $"✅ 已选择：{name}";
+
+        // 创建：选完身份后直接创建
+        if (_createPanelOpen)
+            BeginCreateRoomAfterRoleSelected();
+        // 加入：已找到房间则直接加入（不必再点 JOIN）
+        else if (_joinPanelOpen && GameContract.RoomState.FoundRoom.HasValue)
+            TryJoinFoundRoomNow();
+    }
+
+    void BeginCreateRoomAfterRoleSelected()
+    {
+        if (!GameContract.IsRoomBound) return;
+
+        string roomName = $"{System.Environment.MachineName}的房间";
+        if (statusText != null)
+            statusText.text = $"⏳ 正在创建房间「{roomName}」...";
+
+        _waitingCreateEnter = true;
+        GameContract.RoomCommands.CreateRoom(roomName, 4);
+    }
+
+    IEnumerator DelayedEnterGameScene()
+    {
+        _waitingCreateEnter = false;
+        string code = GameContract.IsRoomBound ? GameContract.RoomState.CurrentRoomCode : string.Empty;
+        if (statusText != null && !string.IsNullOrEmpty(code))
+            statusText.text = $"✅ 创建成功！短码：{code}，正在进入...";
+
+        yield return new WaitForSeconds(0.8f);
+
+        ShowMainMenu();
+
+        if (netManager == null)
+            netManager = FindObjectOfType<CustomNetworkManager>();
+
+        if (netManager != null && NetworkServer.active && !string.IsNullOrEmpty(netManager.gameScene))
+        {
+            Debug.Log($"进入游戏场景，短码={code}");
+            netManager.ServerChangeScene(netManager.gameScene);
+        }
+        else
+        {
+            Debug.LogWarning("无法切到 gameScene：NetworkManager 未就绪");
+        }
+    }
+
+    void RefreshJoinRoleButtons(RoleSlots projected)
+    {
+        bool found = GameContract.IsRoomBound && GameContract.RoomState.FoundRoom.HasValue;
+        bool hiderOk = true;
+        bool seekerOk = true;
+
+        if (found)
+        {
+            RoomInfo info = GameContract.RoomState.FoundRoom.Value;
+            projected = RoleSlots.ProjectForJoiner(
+                info.currentPlayers, info.seekerCount, info.hiderCount);
+            hiderOk = !projected.HiderFull;
+            seekerOk = !projected.SeekerFull;
+        }
+
+        if (_joinPanelOpen)
+        {
+            SetRoleButtonInteractable(EffectiveJoinHiderBtn(), hiderOk);
+            SetRoleButtonInteractable(EffectiveJoinHunterBtn(), seekerOk);
+        }
+
+        if (_createPanelOpen)
+        {
+            SetRoleButtonInteractable(hiderBtn, true);
+            SetRoleButtonInteractable(hunterBtn, true);
+        }
+    }
+
+    Button EffectiveJoinHiderBtn() => joinHiderBtn != null ? joinHiderBtn : hiderBtn;
+    Button EffectiveJoinHunterBtn() => joinHunterBtn != null ? joinHunterBtn : hunterBtn;
+
+    static void SetRoleButtonInteractable(Button btn, bool interactable)
+    {
+        if (btn != null) btn.interactable = interactable;
     }
     
     // ==================== 创建游戏 ====================
     void OpenCreatePanel()
     {
+        _createPanelOpen = true;
+        _joinPanelOpen = false;
+
         if (createPanel != null) createPanel.SetActive(true);
         if (joinPanel != null) joinPanel.SetActive(false);
         if (settingsPanel != null) settingsPanel.SetActive(false);
@@ -229,11 +588,17 @@ public class MainMenuController : MonoBehaviour
             mainMenuPanel.SetActive(false);
         
         if (statusText != null)
-            statusText.text = "🏠 创建新房间";
+            statusText.text = "🏠 选择身份并创建房间";
+
+        AttachRoleSelectTo(createPanel);
+        SetRoleSelectVisible(true);
+        SetRoleButtonInteractable(hiderBtn, true);
+        SetRoleButtonInteractable(hunterBtn, true);
     }
     
     void CloseCreatePanel()
     {
+        _createPanelOpen = false;
         if (createPanel != null) createPanel.SetActive(false);
         ShowMainMenu();
     }
@@ -241,6 +606,9 @@ public class MainMenuController : MonoBehaviour
     // ==================== 设置 ====================
     void OpenSettingsPanel()
     {
+        _joinPanelOpen = false;
+        _createPanelOpen = false;
+
         if (settingsPanel != null) settingsPanel.SetActive(true);
         if (joinPanel != null) joinPanel.SetActive(false);
         if (createPanel != null) createPanel.SetActive(false);

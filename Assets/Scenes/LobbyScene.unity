@@ -1937,6 +1937,7 @@ RectTransform:
   - {fileID: 663030477}
   - {fileID: 68614199}
   - {fileID: 1678338617}
+  - {fileID: 1681468757}
   m_Father: {fileID: 519420032}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
@@ -2027,10 +2028,14 @@ MonoBehaviour:
   joinPanel: {fileID: 68614198}
   joinBtn: {fileID: 1235895592}
   joinBackBtn: {fileID: 1503256114}
+  roomCodeInput: {fileID: 187719692}
+  joinHiderBtn: {fileID: 0}
+  joinHunterBtn: {fileID: 0}
   createPanel: {fileID: 1678338616}
   createBackBtn: {fileID: 283356148}
   hiderBtn: {fileID: 938844875}
   hunterBtn: {fileID: 1743584146}
+  roleSelectPanel: {fileID: 1681468756}
   settingsPanel: {fileID: 663030476}
   settingsBackBtn: {fileID: 1715954166}
   masterVolumeSlider: {fileID: 594512943}
@@ -4546,7 +4551,6 @@ RectTransform:
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
-  - {fileID: 1681468757}
   - {fileID: 283356147}
   m_Father: {fileID: 679146330}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
@@ -4604,7 +4608,7 @@ GameObject:
   - component: {fileID: 1681468757}
   - component: {fileID: 1681468758}
   m_Layer: 5
-  m_Name: Panel
+  m_Name: RoleSelectPanel
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -4624,11 +4628,11 @@ RectTransform:
   m_Children:
   - {fileID: 938844874}
   - {fileID: 1743584145}
-  m_Father: {fileID: 1678338617}
+  m_Father: {fileID: 679146330}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: 0, y: 53}
+  m_AnchoredPosition: {x: 0, y: -120}
   m_SizeDelta: {x: 900, y: 100}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!222 &1681468758

@@ -22,4 +22,6 @@ public class RoomItemData
     public string gameMode;          // 游戏模式
     public float ping;              // 延迟(ms)
     public string roomCode;          // 局域网短码（广播可选字段，旧包无此段则为空）
+    public int seekerCount;          // 已选抓捕者（广播可选）
+    public int hiderCount;           // 已选躲藏者（广播可选）
 }
