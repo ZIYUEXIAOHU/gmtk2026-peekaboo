@@ -15,7 +15,7 @@ GameObject:
   - component: {fileID: 6988699046148284263}
   - component: {fileID: 1952218338319265146}
   - component: {fileID: 4320238141309412926}
-  m_Layer: 0
+  m_Layer: 6
   m_Name: SeekerPrefab
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -231,9 +231,15 @@ MonoBehaviour:
   syncDirection: 0
   syncMode: 0
   syncInterval: 0
-  moveSpeed: 12
+  moveSpeed: 5.6
+  speedMultiplier: 10
+  investigateRange: 1.5
+  slashRange: 1
   groundCheckRadius: 0.2
   groundCheckPoint: {fileID: 0}
   groundLayer:
     serializedVersion: 2
     m_Bits: 0
+  testMode: 0
+  testInvestigateKey: 102
+  testSlashKey: 32

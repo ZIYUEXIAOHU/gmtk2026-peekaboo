@@ -5,15 +5,16 @@ public class HiderController : NetworkBehaviour
 {
     [Header("移动设置")]
     public float moveSpeed = GameConstants.HiderMoveSpeed;  // 使用契约常量 0.3
-    public float jumpForce = 12f;
+    public float speedMultiplier = 13.33f;  // 速度倍率（4 / 0.3 ≈ 13.33），可在 Inspector 调整
+    public float jumpForce = 18f;  // 跳跃力
     
     [Header("检测")]
-    public float groundCheckRadius = 0.2f;
+    public float groundCheckRadius = 0.3f;
     public Transform groundCheckPoint;
     public LayerMask groundLayer;
     
     [Header("测试模式")]
-    public bool testMode = false;           // 勾选后无需联网即可测试
+    public bool testMode = false;
     public KeyCode testJumpKey = KeyCode.W;
     public KeyCode testPlaceKey = KeyCode.F;
     
@@ -46,13 +47,13 @@ public class HiderController : NetworkBehaviour
             rb.gravityScale = 3f;
             rb.constraints = RigidbodyConstraints2D.FreezeRotation;
             
-            // ===== 防止穿透 =====
             rb.collisionDetectionMode = CollisionDetectionMode2D.Continuous;
             rb.interpolation = RigidbodyInterpolation2D.Interpolate;
             rb.sleepMode = RigidbodySleepMode2D.NeverSleep;
             rb.useFullKinematicContacts = true;
         }
         
+        // ===== 确保 GroundCheck 存在 =====
         if (groundCheckPoint == null)
         {
             Transform existing = transform.Find("GroundCheck");
@@ -67,7 +68,14 @@ public class HiderController : NetworkBehaviour
             }
         }
         
-        // ===== 测试模式：直接启用 =====
+        // ===== 强制设置位置 =====
+        groundCheckPoint.localPosition = new Vector3(0, -0.5f, 0);
+        Debug.Log($"✅ GroundCheck 位置: {groundCheckPoint.localPosition}");
+        
+        // ===== 确保 groundLayer 包含 Ground 层 =====
+        groundLayer |= LayerMask.GetMask("Ground");
+        Debug.Log($"✅ groundLayer 已包含 Ground 层: {groundLayer.value}");
+        
         if (testMode)
         {
             isLocalPlayerReady = true;
@@ -86,7 +94,9 @@ public class HiderController : NetworkBehaviour
         }
         
         isLocalPlayerReady = true;
-        moveSpeed = GameConstants.HiderMoveSpeed;
+        moveSpeed = GameConstants.HiderMoveSpeed * speedMultiplier;
+        
+        Debug.Log($"✅ 躲藏者速度: 契约={GameConstants.HiderMoveSpeed}, 倍率={speedMultiplier}, 实际={moveSpeed}");
         
         if (spriteRenderer != null)
             spriteRenderer.color = new Color(0.2f, 0.8f, 0.2f);
@@ -131,15 +141,17 @@ public class HiderController : NetworkBehaviour
     
     void Jump()
     {
-        if (hasJumped && !isGrounded)
-        {
-            Debug.Log("⚠️ 已经跳过了，不能二段跳");
-            return;
-        }
+        Debug.Log($"🔍 Jump 调用: isGrounded={isGrounded}, hasJumped={hasJumped}");
         
         if (isGrounded)
         {
             hasJumped = false;
+        }
+        
+        if (hasJumped && !isGrounded)
+        {
+            Debug.Log("⚠️ 已经跳过了，不能二段跳");
+            return;
         }
         
         rb.velocity = new Vector2(rb.velocity.x, jumpForce);
@@ -158,9 +170,9 @@ public class HiderController : NetworkBehaviour
         }
         
         RaycastHit2D hit = Physics2D.Raycast(
-            transform.position, 
-            Vector2.down, 
-            0.6f, 
+            groundCheckPoint.position,
+            Vector2.down,
+            0.2f,
             groundLayer
         );
         
@@ -170,12 +182,16 @@ public class HiderController : NetworkBehaviour
             if (effector != null && effector.useOneWay)
             {
                 StartCoroutine(DisableCollision());
-                Debug.Log("跳下单向平台");
+                Debug.Log($"⬇️ 跳下平台: {hit.collider.gameObject.name}");
             }
             else
             {
                 Debug.Log("⚠️ 下面是实心地面，无法跳下");
             }
+        }
+        else
+        {
+            Debug.Log("⚠️ 脚下没有检测到平台");
         }
     }
     
@@ -192,8 +208,23 @@ public class HiderController : NetworkBehaviour
     
     void CheckGrounded()
     {
-        if (groundCheckPoint == null) return;
+        if (groundCheckPoint == null)
+        {
+            Transform existing = transform.Find("GroundCheck");
+            if (existing != null)
+                groundCheckPoint = existing;
+            else
+            {
+                GameObject go = new GameObject("GroundCheck");
+                go.transform.SetParent(transform);
+                go.transform.localPosition = new Vector3(0, -0.5f, 0);
+                groundCheckPoint = go.transform;
+            }
+        }
         
+        groundCheckPoint.localPosition = new Vector3(0, -0.5f, 0);
+        
+        // ===== 用 Layer 检测 =====
         Collider2D[] hits = Physics2D.OverlapCircleAll(
             groundCheckPoint.position, 
             groundCheckRadius, 
@@ -202,6 +233,12 @@ public class HiderController : NetworkBehaviour
         
         bool wasGrounded = isGrounded;
         isGrounded = hits.Length > 0;
+        
+        // ===== 调试日志 =====
+        if (hits.Length > 0)
+        {
+            Debug.Log($"🔍 检测到 {hits.Length} 个地面物体 (Layer)");
+        }
         
         if (!wasGrounded && isGrounded)
         {
