@@ -136,6 +136,8 @@ public interface IRoomStateReadonly
     RoomConnectionState ConnectionState { get; }
     /// <summary>最近一次刷新得到的房间列表（RoomInfo 为值类型快照，元素不可回写）。</summary>
     IReadOnlyList<RoomInfo> RoomList { get; }
+    /// <summary>当前房间短码。未建房/已离开为空；房主创建后生成，客户端按码加入成功后为所输入的码。</summary>
+    string CurrentRoomCode { get; }
 }
 
 /// <summary>程序 2（主菜单/局内菜单）→ 程序 1 的房间操作。</summary>
@@ -147,6 +149,8 @@ public interface IRoomCommands
     void CreateRoom(string roomName, int maxPlayers);
     /// <summary>加入指定房间（serverId 来自 RoomInfo.serverId）。</summary>
     void JoinRoom(string serverId);
+    /// <summary>按局域网短码寻找房间并加入（监听广播匹配 roomCode 后走 JoinRoom）。</summary>
+    void JoinRoomByCode(string roomCode);
     /// <summary>离开房间/断开连接，回主菜单（局内 ESC「返回主菜单」也走这里）。</summary>
     void LeaveRoom();
 }
