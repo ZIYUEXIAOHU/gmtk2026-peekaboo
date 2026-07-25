@@ -2,9 +2,13 @@ using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
 using System.Collections.Generic;
+using Mirror;
 
 public class MainMenuController : MonoBehaviour
 {
+    [Header("主菜单")]
+    public GameObject mainMenuPanel;  // GameMenuPanel
+
     [Header("主菜单按钮")]
     public Button createGameBtn;    // 创建游戏
     public Button joinGameBtn;      // 加入游戏
@@ -18,8 +22,12 @@ public class MainMenuController : MonoBehaviour
     
     [Header("创建游戏面板")]
     public GameObject createPanel;  // 创建面板
-    public Button createConfirmBtn; // 创建确认按钮
     public Button createBackBtn;    // 返回按钮
+    
+    // ===== 身份选择按钮（创建面板内） =====
+    [Header("身份选择按钮（创建面板内）")]
+    public Button hiderBtn;         // 躲藏者按钮
+    public Button hunterBtn;        // 抓捕者按钮
     
     [Header("设置面板")]
     public GameObject settingsPanel;
@@ -35,9 +43,14 @@ public class MainMenuController : MonoBehaviour
     public TextMeshProUGUI statusText;
     
     private RoomConnectionState currentConnectionState = RoomConnectionState.Disconnected;
+    private CustomNetworkManager netManager;
+    private ManualDiscovery discovery;
     
     void Start()
     {
+        netManager = FindObjectOfType<CustomNetworkManager>();
+        discovery = FindObjectOfType<ManualDiscovery>();
+        
         // ===== 主菜单按钮 =====
         if (joinGameBtn != null)
             joinGameBtn.onClick.AddListener(OpenJoinPanel);
@@ -59,11 +72,14 @@ public class MainMenuController : MonoBehaviour
             joinBackBtn.onClick.AddListener(CloseJoinPanel);
         
         // ===== 创建面板按钮 =====
-        if (createConfirmBtn != null)
-            createConfirmBtn.onClick.AddListener(OnCreateConfirmed);
-        
         if (createBackBtn != null)
             createBackBtn.onClick.AddListener(CloseCreatePanel);
+        
+        // ===== 身份选择按钮 =====
+        if (hiderBtn != null)
+            hiderBtn.onClick.AddListener(() => Debug.Log("选择躲藏者"));
+        if (hunterBtn != null)
+            hunterBtn.onClick.AddListener(() => Debug.Log("选择抓捕者"));
         
         // ===== 设置面板按钮 =====
         if (settingsBackBtn != null)
@@ -161,6 +177,9 @@ public class MainMenuController : MonoBehaviour
         if (createPanel != null) createPanel.SetActive(false);
         if (settingsPanel != null) settingsPanel.SetActive(false);
         
+        if (mainMenuPanel != null)
+            mainMenuPanel.SetActive(true);
+        
         if (statusText != null)
             statusText.text = "🎮 欢迎来到躲猫猫！";
     }
@@ -171,6 +190,9 @@ public class MainMenuController : MonoBehaviour
         if (joinPanel != null) joinPanel.SetActive(true);
         if (createPanel != null) createPanel.SetActive(false);
         if (settingsPanel != null) settingsPanel.SetActive(false);
+        
+        if (mainMenuPanel != null)
+            mainMenuPanel.SetActive(false);
         
         if (statusText != null)
             statusText.text = "📋 选择房间加入";
@@ -203,6 +225,9 @@ public class MainMenuController : MonoBehaviour
         if (joinPanel != null) joinPanel.SetActive(false);
         if (settingsPanel != null) settingsPanel.SetActive(false);
         
+        if (mainMenuPanel != null)
+            mainMenuPanel.SetActive(false);
+        
         if (statusText != null)
             statusText.text = "🏠 创建新房间";
     }
@@ -213,17 +238,15 @@ public class MainMenuController : MonoBehaviour
         ShowMainMenu();
     }
     
-    void OnCreateConfirmed()
-    {
-        Debug.Log("确认创建房间");
-    }
-    
     // ==================== 设置 ====================
     void OpenSettingsPanel()
     {
         if (settingsPanel != null) settingsPanel.SetActive(true);
         if (joinPanel != null) joinPanel.SetActive(false);
         if (createPanel != null) createPanel.SetActive(false);
+        
+        if (mainMenuPanel != null)
+            mainMenuPanel.SetActive(false);
         
         if (statusText != null)
             statusText.text = "⚙️ 游戏设置";
