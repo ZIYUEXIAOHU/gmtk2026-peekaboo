@@ -152,7 +152,7 @@ Rigidbody2D:
   m_LinearDrag: 0
   m_AngularDrag: 0
   m_GravityScale: 3
-  m_Material: {fileID: 0}
+  m_Material: {fileID: 6200000, guid: 42b30422c16600d4c8bbf65e4b0da55d, type: 2}
   m_IncludeLayers:
     serializedVersion: 2
     m_Bits: 0
@@ -257,12 +257,16 @@ MonoBehaviour:
   syncMode: 0
   syncInterval: 0
   moveSpeed: 0.3
+  speedMultiplier: 13.33
   jumpForce: 12
   groundCheckRadius: 0.2
   groundCheckPoint: {fileID: 0}
   groundLayer:
     serializedVersion: 2
     m_Bits: 0
+  testMode: 0
+  testJumpKey: 119
+  testPlaceKey: 102
 --- !u!114 &720022002200220022
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -288,3 +292,6 @@ MonoBehaviour:
   groundLayer:
     serializedVersion: 2
     m_Bits: 0
+  testMode: 0
+  testInvestigateKey: 102
+  testSlashKey: 32
