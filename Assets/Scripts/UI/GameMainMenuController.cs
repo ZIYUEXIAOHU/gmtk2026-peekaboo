@@ -18,7 +18,12 @@ public class GameMainMenuController : MonoBehaviour
     [Header("设置面板")]
     public GameObject settingsPanel;
     public Button settingsBackBtn;
-    public Slider volumeSlider;
+    public Slider masterVolumeSlider;
+    public Slider musicVolumeSlider;
+    public Slider sfxVolumeSlider;
+    public TextMeshProUGUI masterVolumeText;
+    public TextMeshProUGUI musicVolumeText;
+    public TextMeshProUGUI sfxVolumeText;
     
     [Header("状态")]
     public TextMeshProUGUI statusText;
@@ -40,8 +45,12 @@ public class GameMainMenuController : MonoBehaviour
             settingsBackBtn.onClick.AddListener(BackToMainMenu);
         
         // ===== 音量绑定 =====
-        if (volumeSlider != null)
-            volumeSlider.onValueChanged.AddListener(OnVolumeChanged);
+        if (masterVolumeSlider != null)
+            masterVolumeSlider.onValueChanged.AddListener(OnMasterVolumeChanged);
+        if (musicVolumeSlider != null)
+            musicVolumeSlider.onValueChanged.AddListener(OnMusicVolumeChanged);
+        if (sfxVolumeSlider != null)
+            sfxVolumeSlider.onValueChanged.AddListener(OnSFXVolumeChanged);
         
         // 加载保存的设置
         LoadSettings();
@@ -156,7 +165,6 @@ public class GameMainMenuController : MonoBehaviour
         if (statusText != null)
             statusText.text = "📋 选择房间加入，或点击右侧「创建游戏」";
         
-        // ===== 优先使用契约刷新房间列表 =====
         if (GameContract.IsRoomBound)
         {
             GameContract.RoomCommands.RefreshRoomList();
@@ -185,7 +193,6 @@ public class GameMainMenuController : MonoBehaviour
     // ==================== 返回主菜单 ====================
     void BackToMainMenu()
     {
-        // ===== 如果已连接，离开房间 =====
         if (GameContract.IsRoomBound && currentConnectionState == RoomConnectionState.InRoom)
         {
             GameContract.RoomCommands.LeaveRoom();
@@ -207,20 +214,39 @@ public class GameMainMenuController : MonoBehaviour
         #endif
     }
     
-    // ==================== 设置功能 ====================
+    // ==================== 音量控制 ====================
     void LoadSettings()
     {
-        float volume = PlayerPrefs.GetFloat("Volume", 1f);
-        if (volumeSlider != null)
-        {
-            volumeSlider.value = volume;
-            AudioListener.volume = volume;
-        }
+        float master = PlayerPrefs.GetFloat("MasterVolume", 0.8f);
+        float music = PlayerPrefs.GetFloat("MusicVolume", 0.8f);
+        float sfx = PlayerPrefs.GetFloat("SFXVolume", 0.8f);
+        
+        if (masterVolumeSlider != null) masterVolumeSlider.value = master;
+        if (musicVolumeSlider != null) musicVolumeSlider.value = music;
+        if (sfxVolumeSlider != null) sfxVolumeSlider.value = sfx;
+        
+        AudioListener.volume = master;
     }
     
-    void OnVolumeChanged(float value)
+    void OnMasterVolumeChanged(float value)
     {
+        if (masterVolumeText != null)
+            masterVolumeText.text = Mathf.RoundToInt(value * 100) + "%";
         AudioListener.volume = value;
-        PlayerPrefs.SetFloat("Volume", value);
+        PlayerPrefs.SetFloat("MasterVolume", value);
+    }
+    
+    void OnMusicVolumeChanged(float value)
+    {
+        if (musicVolumeText != null)
+            musicVolumeText.text = Mathf.RoundToInt(value * 100) + "%";
+        PlayerPrefs.SetFloat("MusicVolume", value);
+    }
+    
+    void OnSFXVolumeChanged(float value)
+    {
+        if (sfxVolumeText != null)
+            sfxVolumeText.text = Mathf.RoundToInt(value * 100) + "%";
+        PlayerPrefs.SetFloat("SFXVolume", value);
     }
 }

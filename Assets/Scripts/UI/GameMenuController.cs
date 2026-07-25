@@ -12,9 +12,21 @@ public class GameMenuController : MonoBehaviour
     public Button settingsBtn;
     public Button quitBtn;
     
+    [Header("ESC 菜单信息")]
+    public TextMeshProUGUI timeText;   // 剩余时间文本
+    public TextMeshProUGUI aliveText;  // 存活数文本
+    
     [Header("设置面板")]
     public GameObject settingsPanel;
     public Button settingsBackBtn;
+    
+    [Header("音量滑块")]
+    public Slider masterVolumeSlider;
+    public Slider musicVolumeSlider;
+    public Slider sfxVolumeSlider;
+    public TextMeshProUGUI masterVolumeText;
+    public TextMeshProUGUI musicVolumeText;
+    public TextMeshProUGUI sfxVolumeText;
     
     private bool isMenuOpen = false;
     private bool isSettingsOpen = false;
@@ -37,6 +49,14 @@ public class GameMenuController : MonoBehaviour
         if (settingsBackBtn != null)
             settingsBackBtn.onClick.AddListener(CloseSettings);
         
+        // 绑定音量滑块
+        if (masterVolumeSlider != null)
+            masterVolumeSlider.onValueChanged.AddListener(OnMasterVolumeChanged);
+        if (musicVolumeSlider != null)
+            musicVolumeSlider.onValueChanged.AddListener(OnMusicVolumeChanged);
+        if (sfxVolumeSlider != null)
+            sfxVolumeSlider.onValueChanged.AddListener(OnSFXVolumeChanged);
+        
         // 订阅契约事件
         SubscribeEvents();
         
@@ -45,6 +65,9 @@ public class GameMenuController : MonoBehaviour
             escMenu.SetActive(false);
         if (settingsPanel != null)
             settingsPanel.SetActive(false);
+        
+        // 加载音量
+        LoadVolumes();
     }
     
     void Update()
@@ -52,14 +75,51 @@ public class GameMenuController : MonoBehaviour
         // ESC 键
         if (Input.GetKeyDown(KeyCode.Escape))
         {
-            // 如果设置面板开着，关闭设置面板（回到 ESC 菜单）
             if (settingsPanel != null && settingsPanel.activeSelf)
             {
                 CloseSettings();
                 return;
             }
-            // 否则切换 ESC 菜单
             ToggleMenu();
+        }
+        
+        // ===== ESC 菜单打开时，更新信息 =====
+        if (escMenu != null && escMenu.activeSelf)
+        {
+            UpdateInfoTexts();
+        }
+    }
+    
+    // ==================== 更新信息文本（遵循契约） ====================
+    void UpdateInfoTexts()
+    {
+        // ===== 更新剩余时间 =====
+        if (timeText != null)
+        {
+            if (GameContract.IsBound && GameContract.State != null)
+            {
+                float timeLeft = GameContract.State.PhaseTimeLeft;
+                timeText.text = $"⏱️ {Mathf.CeilToInt(timeLeft)}s";
+            }
+            else
+            {
+                timeText.text = "⏱️ --s";
+            }
+        }
+        
+        // ===== 更新存活数 =====
+        if (aliveText != null)
+        {
+            if (GameContract.IsBound && GameContract.State != null)
+            {
+                int alive = GameContract.State.AliveHiders;
+                int total = GameContract.State.TotalHiders;
+                aliveText.text = $"🟢 {alive}/{total}";
+            }
+            else
+            {
+                aliveText.text = "🟢 -/-";
+            }
         }
     }
     
@@ -87,7 +147,6 @@ public class GameMenuController : MonoBehaviour
         
         if (state == RoomConnectionState.Disconnected)
         {
-            // ===== 断开连接 → 切换回大厅场景 =====
             ReturnToLobby();
         }
     }
@@ -97,7 +156,6 @@ public class GameMenuController : MonoBehaviour
     {
         Debug.Log("🏠 返回大厅场景");
         
-        // 关闭所有菜单
         if (escMenu != null)
             escMenu.SetActive(false);
         if (settingsPanel != null)
@@ -105,7 +163,6 @@ public class GameMenuController : MonoBehaviour
         isMenuOpen = false;
         isSettingsOpen = false;
         
-        // ===== 切换场景到 LobbyScene =====
         SceneManager.LoadScene("LobbyScene");
     }
     
@@ -124,7 +181,6 @@ public class GameMenuController : MonoBehaviour
     // ==================== UI 控制 ====================
     void ToggleMenu()
     {
-        // 如果设置面板开着，先关掉
         if (settingsPanel != null && settingsPanel.activeSelf)
         {
             settingsPanel.SetActive(false);
@@ -163,7 +219,43 @@ public class GameMenuController : MonoBehaviour
             escMenu.SetActive(true);
     }
     
-    // ==================== 退出房间 ====================
+    // ==================== 音量控制 ====================
+    void OnMasterVolumeChanged(float value)
+    {
+        if (masterVolumeText != null)
+            masterVolumeText.text = Mathf.RoundToInt(value * 100) + "%";
+        AudioListener.volume = value;
+        PlayerPrefs.SetFloat("MasterVolume", value);
+    }
+    
+    void OnMusicVolumeChanged(float value)
+    {
+        if (musicVolumeText != null)
+            musicVolumeText.text = Mathf.RoundToInt(value * 100) + "%";
+        PlayerPrefs.SetFloat("MusicVolume", value);
+    }
+    
+    void OnSFXVolumeChanged(float value)
+    {
+        if (sfxVolumeText != null)
+            sfxVolumeText.text = Mathf.RoundToInt(value * 100) + "%";
+        PlayerPrefs.SetFloat("SFXVolume", value);
+    }
+    
+    void LoadVolumes()
+    {
+        float master = PlayerPrefs.GetFloat("MasterVolume", 0.8f);
+        float music = PlayerPrefs.GetFloat("MusicVolume", 0.8f);
+        float sfx = PlayerPrefs.GetFloat("SFXVolume", 0.8f);
+        
+        if (masterVolumeSlider != null) masterVolumeSlider.value = master;
+        if (musicVolumeSlider != null) musicVolumeSlider.value = music;
+        if (sfxVolumeSlider != null) sfxVolumeSlider.value = sfx;
+        
+        AudioListener.volume = master;
+    }
+    
+    // ==================== 退出房间（遵循契约） ====================
     void QuitRoom()
     {
         Debug.Log("🚪 退出房间");
@@ -173,7 +265,6 @@ public class GameMenuController : MonoBehaviour
         if (settingsPanel != null && settingsPanel.activeSelf)
             settingsPanel.SetActive(false);
         
-        // ===== 契约调用：离开房间 =====
         if (GameContract.IsRoomBound)
         {
             GameContract.RoomCommands.LeaveRoom();
@@ -181,7 +272,6 @@ public class GameMenuController : MonoBehaviour
         }
         else
         {
-            // 兼容模式：直接返回大厅
             Debug.Log("⚠️ 契约未绑定，直接返回大厅");
             ReturnToLobby();
         }

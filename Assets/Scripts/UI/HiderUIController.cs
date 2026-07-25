@@ -35,6 +35,8 @@ public class HiderUIController : MonoBehaviour
     private List<Image> slotIcons = new List<Image>();
     private List<Image> slotHighlights = new List<Image>();
     private List<GameObject> slotObjects = new List<GameObject>();
+    private List<GameObject> usedBgs = new List<GameObject>();   // 深色背景
+    private List<GameObject> emptyBgs = new List<GameObject>();  // 浅色背景
     private ItemTable itemTable;
     
     private List<IPlayerStateReadonly> aliveHiders = new List<IPlayerStateReadonly>();
@@ -52,6 +54,7 @@ public class HiderUIController : MonoBehaviour
         if (placeHintText != null)
             placeHintText.gameObject.SetActive(true);
         
+        InitializeInventory();
         UpdateInventoryCount();
         
         if (observerUI != null)
@@ -63,22 +66,24 @@ public class HiderUIController : MonoBehaviour
             observerNextBtn.onClick.AddListener(OnNextObserver);
     }
     
-    void UpdateInventoryCount()
+    void InitializeInventory()
     {
-        if (inventoryCountText == null) return;
-        
-        // ===== 直接统计 inventoryParent 下激活的 ItemSlot =====
-        int activeSlotCount = 0;
-        foreach (Transform child in inventoryParent)
+        foreach (var obj in slotObjects)
         {
-            if (child.gameObject.activeSelf && child.name.StartsWith("ItemSlot_"))
-            {
-                activeSlotCount++;
-            }
+            Destroy(obj);
         }
+        slotIcons.Clear();
+        slotHighlights.Clear();
+        slotObjects.Clear();
+        usedBgs.Clear();
+        emptyBgs.Clear();
         
-        inventoryCountText.text = $"{activeSlotCount}/{maxSlots}";
-        Debug.Log($"📊 更新数量显示: {activeSlotCount}/{maxSlots}");
+        if (itemSlotPrefab == null || inventoryParent == null) return;
+        
+        for (int i = 0; i < maxSlots; i++)
+        {
+            CreateSlot(i);
+        }
     }
     
     GameObject CreateSlot(int index)
@@ -88,6 +93,10 @@ public class HiderUIController : MonoBehaviour
         
         Image icon = slot.transform.Find("ItemIcon")?.GetComponent<Image>();
         Image highlight = slot.transform.Find("Highlight")?.GetComponent<Image>();
+        
+        // ===== 获取两种背景 =====
+        GameObject usedBg = slot.transform.Find("UsedBg")?.gameObject;
+        GameObject emptyBg = slot.transform.Find("EmptyBg")?.gameObject;
         
         RectTransform rect = slot.GetComponent<RectTransform>();
         if (rect != null)
@@ -101,9 +110,15 @@ public class HiderUIController : MonoBehaviour
         slotIcons.Add(icon);
         slotHighlights.Add(highlight);
         slotObjects.Add(slot);
+        usedBgs.Add(usedBg);
+        emptyBgs.Add(emptyBg);
         
         if (highlight != null)
             highlight.gameObject.SetActive(false);
+        
+        // 默认显示浅色背景
+        if (usedBg != null) usedBg.SetActive(false);
+        if (emptyBg != null) emptyBg.SetActive(true);
         
         slot.SetActive(false);
         
@@ -124,6 +139,23 @@ public class HiderUIController : MonoBehaviour
         }
     }
     
+    void UpdateInventoryCount()
+    {
+        if (inventoryCountText == null) return;
+        
+        int activeSlotCount = 0;
+        foreach (Transform child in inventoryParent)
+        {
+            if (child.gameObject.activeSelf && child.name.StartsWith("ItemSlot_"))
+            {
+                activeSlotCount++;
+            }
+        }
+        
+        inventoryCountText.text = $"{activeSlotCount}/{maxSlots}";
+        Debug.Log($"📊 更新数量显示: {activeSlotCount}/{maxSlots}");
+    }
+    
     public void UpdateInventory(IReadOnlyList<int> itemQueue)
     {
         Debug.Log($"🔄 UpdateInventory 被调用，itemQueue={itemQueue?.Count ?? 0}");
@@ -142,6 +174,12 @@ public class HiderUIController : MonoBehaviour
             if (i < itemCount)
             {
                 slot.SetActive(true);
+                
+                // ===== 有物品：显示深色背景，隐藏浅色背景 =====
+                if (i < usedBgs.Count && usedBgs[i] != null)
+                    usedBgs[i].SetActive(true);
+                if (i < emptyBgs.Count && emptyBgs[i] != null)
+                    emptyBgs[i].SetActive(false);
                 
                 Image icon = slotIcons[i];
                 Image highlight = slotHighlights[i];
@@ -172,11 +210,28 @@ public class HiderUIController : MonoBehaviour
             }
             else
             {
-                slot.SetActive(false);
+                slot.SetActive(true);
+                
+                // ===== 没有物品：显示浅色背景，隐藏深色背景 =====
+                if (i < usedBgs.Count && usedBgs[i] != null)
+                    usedBgs[i].SetActive(false);
+                if (i < emptyBgs.Count && emptyBgs[i] != null)
+                    emptyBgs[i].SetActive(true);
+                
+                Image icon = slotIcons[i];
+                if (icon != null)
+                {
+                    icon.sprite = null;
+                    icon.color = new Color(1, 1, 1, 0.1f);
+                }
+                
+                if (i < slotHighlights.Count && slotHighlights[i] != null)
+                {
+                    slotHighlights[i].gameObject.SetActive(false);
+                }
             }
         }
         
-        // ===== 更新数量显示 =====
         UpdateInventoryCount();
     }
     
