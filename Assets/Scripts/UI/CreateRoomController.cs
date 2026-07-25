@@ -10,6 +10,7 @@ public class CreateRoomController : MonoBehaviour
     public TMP_InputField roomNameInput;
     public TMP_Dropdown maxPlayerDropdown;
     public Button createConfirmBtn;
+    public Button backBtn;  // 返回按钮
     public TextMeshProUGUI createStatusText;
     
     [Header("主控制器")]
@@ -46,10 +47,12 @@ public class CreateRoomController : MonoBehaviour
         createConfirmBtn.onClick.AddListener(CreateRoom);
         roomNameInput.onEndEdit.AddListener(OnRoomNameEndEdit);
         
+        if (backBtn != null)
+            backBtn.onClick.AddListener(OnBackClicked);
+        
         roomNameInput.text = GetDefaultRoomName();
         maxPlayerDropdown.value = 2;
         
-        // ===== 订阅契约事件 =====
         SubscribeEvents();
     }
     
@@ -103,7 +106,6 @@ public class CreateRoomController : MonoBehaviour
         createStatusText.color = Color.yellow;
         createStatusText.gameObject.SetActive(true);
         
-        // ===== 优先使用契约 =====
         if (GameContract.IsRoomBound)
         {
             Debug.Log($"[契约] 创建房间：{roomName}，最大人数：{maxPlayers}");
@@ -111,7 +113,6 @@ public class CreateRoomController : MonoBehaviour
         }
         else
         {
-            // ===== 兼容旧版 =====
             if (netManager == null)
             {
                 createStatusText.text = "❌ 错误：找不到网络管理器！";
@@ -144,8 +145,7 @@ public class CreateRoomController : MonoBehaviour
         
         if (mainMenuController != null)
         {
-            mainMenuController.SetCreateModeActive(false);
-            mainMenuController.UpdateStatusText("🎮 进入选角场景...");
+            mainMenuController.ShowMainMenu();
         }
         
         createStatusText.gameObject.SetActive(false);
@@ -173,6 +173,18 @@ public class CreateRoomController : MonoBehaviour
         {
             CreateRoom();
         }
+    }
+    
+    void OnBackClicked()
+    {
+        Debug.Log("← 返回主菜单");
+        
+        if (mainMenuController != null)
+        {
+            mainMenuController.ShowMainMenu();
+        }
+        
+        gameObject.SetActive(false);
     }
     
     public void ResetCreatePanel()

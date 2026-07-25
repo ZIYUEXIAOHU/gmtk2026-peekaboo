@@ -5,44 +5,83 @@ using System.Collections.Generic;
 
 public class MainMenuController : MonoBehaviour
 {
-    [Header("左侧 - 加入游戏")]
-    public Button joinGameBtn;
-    public GameObject functionBar;
-    public GameObject roomListScrollView;
+    [Header("主菜单按钮")]
+    public Button createGameBtn;    // 创建游戏
+    public Button joinGameBtn;      // 加入游戏
+    public Button settingsBtn;      // 设置
+    public Button quitGameBtn;      // 退出游戏
     
-    [Header("右侧 - 创建游戏")]
-    public Button createGameBtn;
-    public GameObject createPanel;
-    public GameObject rightPanel;
+    [Header("加入游戏面板")]
+    public GameObject joinPanel;    // 加入面板
+    public Button joinBtn;          // 加入确认按钮
+    public Button joinBackBtn;      // 返回按钮
+    
+    [Header("创建游戏面板")]
+    public GameObject createPanel;  // 创建面板
+    public Button createConfirmBtn; // 创建确认按钮
+    public Button createBackBtn;    // 返回按钮
+    
+    [Header("设置面板")]
+    public GameObject settingsPanel;
+    public Button settingsBackBtn;
+    public Slider masterVolumeSlider;
+    public Slider musicVolumeSlider;
+    public Slider sfxVolumeSlider;
+    public TextMeshProUGUI masterVolumeText;
+    public TextMeshProUGUI musicVolumeText;
+    public TextMeshProUGUI sfxVolumeText;
     
     [Header("状态")]
     public TextMeshProUGUI statusText;
     
-    private bool isJoinModeActive = true;
-    private bool isCreateModeActive = false;
-    
-    // ===== 房间连接状态（来自契约 GameEnums.cs）=====
     private RoomConnectionState currentConnectionState = RoomConnectionState.Disconnected;
     
     void Start()
     {
-        joinGameBtn.onClick.AddListener(ToggleJoinMode);
-        createGameBtn.onClick.AddListener(ToggleCreateMode);
+        // ===== 主菜单按钮 =====
+        if (joinGameBtn != null)
+            joinGameBtn.onClick.AddListener(OpenJoinPanel);
         
-        // ===== 订阅房间事件（契约）=====
+        if (createGameBtn != null)
+            createGameBtn.onClick.AddListener(OpenCreatePanel);
+        
+        if (settingsBtn != null)
+            settingsBtn.onClick.AddListener(OpenSettingsPanel);
+        
+        if (quitGameBtn != null)
+            quitGameBtn.onClick.AddListener(QuitGame);
+        
+        // ===== 加入面板按钮 =====
+        if (joinBtn != null)
+            joinBtn.onClick.AddListener(OnJoinClicked);
+        
+        if (joinBackBtn != null)
+            joinBackBtn.onClick.AddListener(CloseJoinPanel);
+        
+        // ===== 创建面板按钮 =====
+        if (createConfirmBtn != null)
+            createConfirmBtn.onClick.AddListener(OnCreateConfirmed);
+        
+        if (createBackBtn != null)
+            createBackBtn.onClick.AddListener(CloseCreatePanel);
+        
+        // ===== 设置面板按钮 =====
+        if (settingsBackBtn != null)
+            settingsBackBtn.onClick.AddListener(CloseSettingsPanel);
+        
+        // ===== 音量绑定 =====
+        if (masterVolumeSlider != null)
+            masterVolumeSlider.onValueChanged.AddListener(OnMasterVolumeChanged);
+        if (musicVolumeSlider != null)
+            musicVolumeSlider.onValueChanged.AddListener(OnMusicVolumeChanged);
+        if (sfxVolumeSlider != null)
+            sfxVolumeSlider.onValueChanged.AddListener(OnSFXVolumeChanged);
+        
         SubscribeRoomEvents();
-        
-        // ===== 默认显示 LeftPanel =====
-        SetJoinModeActive(true);
-        SetCreateModeActive(false);
-        
-        ShowBothButtons();
-        
-        if (statusText != null)
-            statusText.text = "📋 选择房间加入，或点击右侧「创建游戏」";
+        ShowMainMenu();
+        LoadSettings();
     }
     
-    // ==================== 订阅契约事件 ====================
     void SubscribeRoomEvents()
     {
         try
@@ -54,18 +93,13 @@ public class MainMenuController : MonoBehaviour
                 GameContract.RoomEvents.OnRoomError += OnRoomError;
                 Debug.Log("✅ MainMenuController 订阅契约事件成功");
             }
-            else
-            {
-                Debug.Log("⏳ 等待契约绑定...");
-            }
         }
         catch (System.Exception e)
         {
-            Debug.LogWarning($"订阅房间事件失败（等待契约实现）：{e.Message}");
+            Debug.LogWarning($"订阅契约事件失败：{e.Message}");
         }
     }
     
-    // ==================== 契约事件回调 ====================
     void OnConnectionStateChanged(RoomConnectionState state)
     {
         currentConnectionState = state;
@@ -81,26 +115,13 @@ public class MainMenuController : MonoBehaviour
         
         if (statusText != null)
             statusText.text = statusMsg;
-        
-        if (state == RoomConnectionState.Disconnected || state == RoomConnectionState.Failed)
-        {
-            ShowBothButtons();
-        }
-        else if (state == RoomConnectionState.InRoom)
-        {
-            // 隐藏两个主按钮，显示房间界面
-            joinGameBtn.gameObject.SetActive(false);
-            createGameBtn.gameObject.SetActive(false);
-        }
     }
     
     void OnRoomListUpdated(IReadOnlyList<RoomInfo> roomList)
     {
         RoomListController controller = FindObjectOfType<RoomListController>();
         if (controller != null)
-        {
             controller.UpdateRoomList(roomList);
-        }
     }
     
     void OnRoomError(RoomError error)
@@ -117,7 +138,6 @@ public class MainMenuController : MonoBehaviour
         
         if (statusText != null)
             statusText.text = errorMsg;
-        
         Debug.LogWarning($"[RoomError] {error.op}: {errorMsg}");
     }
     
@@ -135,107 +155,128 @@ public class MainMenuController : MonoBehaviour
         catch { }
     }
     
-    // ==================== UI 控制 ====================
-    public void ShowBothButtons()
+    public void ShowMainMenu()
     {
-        joinGameBtn.gameObject.SetActive(true);
-        createGameBtn.gameObject.SetActive(true);
-    }
-    
-    void ToggleJoinMode()
-    {
-        if (isJoinModeActive)
-        {
-            return;
-        }
-        
-        isJoinModeActive = true;
-        isCreateModeActive = false;
-        
-        SetJoinModeActive(true);
-        SetCreateModeActive(false);
-        
-        ShowBothButtons();
+        if (joinPanel != null) joinPanel.SetActive(false);
+        if (createPanel != null) createPanel.SetActive(false);
+        if (settingsPanel != null) settingsPanel.SetActive(false);
         
         if (statusText != null)
-            statusText.text = "📋 选择房间加入，或点击右侧「创建游戏」";
+            statusText.text = "🎮 欢迎来到躲猫猫！";
+    }
+    
+    // ==================== 加入游戏 ====================
+    void OpenJoinPanel()
+    {
+        if (joinPanel != null) joinPanel.SetActive(true);
+        if (createPanel != null) createPanel.SetActive(false);
+        if (settingsPanel != null) settingsPanel.SetActive(false);
         
-        // ===== 使用契约刷新房间列表 =====
+        if (statusText != null)
+            statusText.text = "📋 选择房间加入";
+        
         if (GameContract.IsRoomBound)
-        {
             GameContract.RoomCommands.RefreshRoomList();
-        }
         else
         {
-            // 兼容旧版
             RoomListController roomList = FindObjectOfType<RoomListController>();
             if (roomList != null)
-            {
                 roomList.RefreshRoomList();
-            }
         }
     }
     
-    void ToggleCreateMode()
+    void CloseJoinPanel()
     {
-        if (isCreateModeActive)
-        {
-            return;
-        }
-        
-        isCreateModeActive = true;
-        isJoinModeActive = false;
-        
-        SetCreateModeActive(true);
-        SetJoinModeActive(false);
-        
-        ShowBothButtons();
+        if (joinPanel != null) joinPanel.SetActive(false);
+        ShowMainMenu();
+    }
+    
+    void OnJoinClicked()
+    {
+        Debug.Log("加入房间");
+    }
+    
+    // ==================== 创建游戏 ====================
+    void OpenCreatePanel()
+    {
+        if (createPanel != null) createPanel.SetActive(true);
+        if (joinPanel != null) joinPanel.SetActive(false);
+        if (settingsPanel != null) settingsPanel.SetActive(false);
         
         if (statusText != null)
-            statusText.text = "🏠 填写信息创建新房间";
+            statusText.text = "🏠 创建新房间";
     }
     
-    public void SetJoinModeActive(bool active)
+    void CloseCreatePanel()
     {
-        isJoinModeActive = active;
-        functionBar.SetActive(active);
-        roomListScrollView.SetActive(active);
-        
-        RoomListController controller = FindObjectOfType<RoomListController>();
-        if (controller != null && controller.listStatusText != null)
-        {
-            controller.listStatusText.gameObject.SetActive(active);
-        }
-        
-        if (active && controller != null)
-        {
-            controller.ApplyFiltersAndSort();
-        }
+        if (createPanel != null) createPanel.SetActive(false);
+        ShowMainMenu();
     }
     
-    public void SetCreateModeActive(bool active)
+    void OnCreateConfirmed()
     {
-        isCreateModeActive = active;
-        createPanel.SetActive(active);
-        
-        if (rightPanel != null)
-        {
-            rightPanel.SetActive(active);
-        }
+        Debug.Log("确认创建房间");
     }
     
-    public void UpdateStatusText(string text)
+    // ==================== 设置 ====================
+    void OpenSettingsPanel()
     {
+        if (settingsPanel != null) settingsPanel.SetActive(true);
+        if (joinPanel != null) joinPanel.SetActive(false);
+        if (createPanel != null) createPanel.SetActive(false);
+        
         if (statusText != null)
-        {
-            statusText.text = text;
-        }
+            statusText.text = "⚙️ 游戏设置";
     }
     
-    void SetAllPanelsActive(bool active)
+    void CloseSettingsPanel()
     {
-        functionBar.SetActive(active);
-        roomListScrollView.SetActive(active);
-        createPanel.SetActive(active);
+        if (settingsPanel != null) settingsPanel.SetActive(false);
+        ShowMainMenu();
+    }
+    
+    void QuitGame()
+    {
+        Debug.Log("退出游戏");
+        #if UNITY_EDITOR
+        UnityEditor.EditorApplication.isPlaying = false;
+        #else
+        Application.Quit();
+        #endif
+    }
+    
+    void LoadSettings()
+    {
+        float master = PlayerPrefs.GetFloat("MasterVolume", 0.8f);
+        float music = PlayerPrefs.GetFloat("MusicVolume", 0.8f);
+        float sfx = PlayerPrefs.GetFloat("SFXVolume", 0.8f);
+        
+        if (masterVolumeSlider != null) masterVolumeSlider.value = master;
+        if (musicVolumeSlider != null) musicVolumeSlider.value = music;
+        if (sfxVolumeSlider != null) sfxVolumeSlider.value = sfx;
+        
+        AudioListener.volume = master;
+    }
+    
+    void OnMasterVolumeChanged(float value)
+    {
+        if (masterVolumeText != null)
+            masterVolumeText.text = Mathf.RoundToInt(value * 100) + "%";
+        AudioListener.volume = value;
+        PlayerPrefs.SetFloat("MasterVolume", value);
+    }
+    
+    void OnMusicVolumeChanged(float value)
+    {
+        if (musicVolumeText != null)
+            musicVolumeText.text = Mathf.RoundToInt(value * 100) + "%";
+        PlayerPrefs.SetFloat("MusicVolume", value);
+    }
+    
+    void OnSFXVolumeChanged(float value)
+    {
+        if (sfxVolumeText != null)
+            sfxVolumeText.text = Mathf.RoundToInt(value * 100) + "%";
+        PlayerPrefs.SetFloat("SFXVolume", value);
     }
 }
