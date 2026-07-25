@@ -21,6 +21,9 @@ public class SeekerController : NetworkBehaviour
     public KeyCode testInvestigateKey = KeyCode.F;
     public KeyCode testSlashKey = KeyCode.Space;
     
+    [Header("动画")]
+    public Animator animator;
+    
     private Rigidbody2D rb;
     private SpriteRenderer spriteRenderer;
     private float moveInput;
@@ -43,6 +46,8 @@ public class SeekerController : NetworkBehaviour
             rb = GetComponent<Rigidbody2D>();
         if (spriteRenderer == null)
             spriteRenderer = GetComponent<SpriteRenderer>();
+        if (animator == null)
+            animator = GetComponent<Animator>();
         
         if (rb != null)
         {
@@ -119,6 +124,9 @@ public class SeekerController : NetworkBehaviour
         
         // ===== 更新朝向 =====
         UpdateFacing();
+        
+        // ===== 更新动画 =====
+        UpdateAnimation();
     }
     
     void FixedUpdate()
@@ -153,6 +161,25 @@ public class SeekerController : NetworkBehaviour
             transform.localScale = new Vector3(1, 1, 1);
         else if (moveInput < 0)
             transform.localScale = new Vector3(-1, 1, 1);
+    }
+    
+    void UpdateAnimation()
+    {
+        if (animator == null) return;
+        
+        // ===== 是否移动 =====
+        bool isMoving = Mathf.Abs(moveInput) > 0.1f;
+        animator.SetBool("IsMoving", isMoving);
+        
+        // ===== 朝向（0=正面, 1=侧面） =====
+        float facing = Mathf.Abs(transform.localScale.x) > 0.5f ? 1f : 0f;
+        animator.SetFloat("FacingDirection", facing);
+        
+        // ===== 劈砍（按空格触发） =====
+        if (Input.GetKeyDown(KeyCode.Space))
+        {
+            animator.SetTrigger("Attack");
+        }
     }
     
     void Investigate()

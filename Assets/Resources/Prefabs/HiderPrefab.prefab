@@ -243,6 +243,7 @@ MonoBehaviour:
   testMode: 0
   testJumpKey: 119
   testPlaceKey: 102
+  animator: {fileID: 0}
 --- !u!1 &5255496373641422438
 GameObject:
   m_ObjectHideFlags: 0
