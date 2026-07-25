@@ -114,8 +114,12 @@ public class ManualDiscovery : MonoBehaviour
             int maxPlayers = nm.maxConnections;
             int status = (int)ResolveBroadcastRoomStatus();
             string gameMode = PlayerPrefs.GetString("GameMode", "经典模式");
+            // 第 7 段：房间短码（旧客户端可忽略多余字段）
+            string roomCode = NetworkRoomService.Instance != null
+                ? NetworkRoomService.Instance.CurrentRoomCode
+                : string.Empty;
 
-            string data = $"{roomName}|{hostName}|{currentPlayers}|{maxPlayers}|{status}|{gameMode}";
+            string data = $"{roomName}|{hostName}|{currentPlayers}|{maxPlayers}|{status}|{gameMode}|{roomCode}";
             byte[] bytes = Encoding.UTF8.GetBytes(data);
 
             using (UdpClient client = new UdpClient())
@@ -342,6 +346,7 @@ public class ManualDiscovery : MonoBehaviour
             int maxPlayers;
             RoomStatus status;
             string gameMode = info[5];
+            string roomCode = info.Length > 6 ? info[6] : string.Empty;
 
             if (!int.TryParse(info[2], out currentPlayers))
                 currentPlayers = 0;
@@ -355,7 +360,7 @@ public class ManualDiscovery : MonoBehaviour
             int port = GetTransportGamePort();
             string serverId = $"{ipAddress}:{port}";
 
-            Debug.Log($"发现房间：{roomName} @ {ipAddress} ({currentPlayers}/{maxPlayers}人)");
+            Debug.Log($"发现房间：{roomName} @ {ipAddress} ({currentPlayers}/{maxPlayers}人) code={roomCode}");
 
             float existingPing = -1f;
             if (roomCache.TryGetValue(serverId, out RoomItemData cached) && cached.ping >= 0f)
@@ -372,7 +377,8 @@ public class ManualDiscovery : MonoBehaviour
                 maxPlayers = maxPlayers,
                 status = status,
                 gameMode = gameMode,
-                ping = existingPing
+                ping = existingPing,
+                roomCode = roomCode
             };
 
             roomCache[serverId] = discovered;

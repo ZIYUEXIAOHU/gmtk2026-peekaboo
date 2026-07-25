@@ -21,4 +21,5 @@ public class RoomItemData
     // 额外信息
     public string gameMode;          // 游戏模式
     public float ping;              // 延迟(ms)
+    public string roomCode;          // 局域网短码（广播可选字段，旧包无此段则为空）
 }
