@@ -16,6 +16,11 @@ public class SeekerController : NetworkBehaviour
     public Transform groundCheckPoint;
     public LayerMask groundLayer;
     
+    [Header("测试模式")]
+    public bool testMode = false;           // 勾选后无需联网即可测试
+    public KeyCode testInvestigateKey = KeyCode.F;
+    public KeyCode testSlashKey = KeyCode.Space;
+    
     private Rigidbody2D rb;
     private SpriteRenderer spriteRenderer;
     private float moveInput;
@@ -43,6 +48,12 @@ public class SeekerController : NetworkBehaviour
         {
             rb.gravityScale = 3f;
             rb.constraints = RigidbodyConstraints2D.FreezeRotation;
+            
+            // ===== 防止穿透 =====
+            rb.collisionDetectionMode = CollisionDetectionMode2D.Continuous;
+            rb.interpolation = RigidbodyInterpolation2D.Interpolate;
+            rb.sleepMode = RigidbodySleepMode2D.NeverSleep;
+            rb.useFullKinematicContacts = true;
         }
         
         if (groundCheckPoint == null)
@@ -57,6 +68,17 @@ public class SeekerController : NetworkBehaviour
                 go.transform.localPosition = new Vector3(0, -0.5f, 0);
                 groundCheckPoint = go.transform;
             }
+        }
+        
+        // ===== 测试模式：直接启用 =====
+        if (testMode)
+        {
+            isLocalPlayerReady = true;
+            enabled = true;
+            if (spriteRenderer != null)
+                spriteRenderer.color = new Color(0.9f, 0.3f, 0.2f);
+            Debug.Log("🧪 SeekerController 测试模式已启用，无需联网");
+            return;
         }
         
         if (!isLocalPlayer)
@@ -77,19 +99,20 @@ public class SeekerController : NetworkBehaviour
     
     void Update()
     {
-        if (!isLocalPlayerReady || !isLocalPlayer) return;
+        if (!isLocalPlayerReady) return;
+        if (!testMode && !isLocalPlayer) return;
         
         // ===== 移动 (A/D) =====
         moveInput = Input.GetAxisRaw("Horizontal");
         
         // ===== 调查 (F) =====
-        if (Input.GetKeyDown(KeyCode.F))
+        if (Input.GetKeyDown(testInvestigateKey))
         {
             Investigate();
         }
         
         // ===== 劈砍 (空格) =====
-        if (Input.GetKeyDown(KeyCode.Space))
+        if (Input.GetKeyDown(testSlashKey))
         {
             Slash();
         }
@@ -100,9 +123,10 @@ public class SeekerController : NetworkBehaviour
     
     void FixedUpdate()
     {
-        if (!isLocalPlayerReady || !isLocalPlayer) return;
+        if (!isLocalPlayerReady) return;
+        if (!testMode && !isLocalPlayer) return;
         
-        // ===== 水平移动（使用 velocity） =====
+        // ===== 水平移动 =====
         Vector2 velocity = rb.velocity;
         velocity.x = moveInput * moveSpeed;
         rb.velocity = velocity;
@@ -111,7 +135,6 @@ public class SeekerController : NetworkBehaviour
         CheckGrounded();
     }
     
-    // ==================== 检测地面 ====================
     void CheckGrounded()
     {
         if (groundCheckPoint == null) return;
@@ -124,7 +147,6 @@ public class SeekerController : NetworkBehaviour
         isGrounded = hits.Length > 0;
     }
     
-    // ==================== 更新朝向 ====================
     void UpdateFacing()
     {
         if (moveInput > 0)
@@ -133,9 +155,14 @@ public class SeekerController : NetworkBehaviour
             transform.localScale = new Vector3(-1, 1, 1);
     }
     
-    // ==================== 调查 ====================
     void Investigate()
     {
+        if (testMode)
+        {
+            Debug.Log("🧪 [测试模式] 调查");
+            return;
+        }
+        
         if (!isLocalPlayer) return;
         
         Debug.Log("🔍 F 调查");
@@ -150,9 +177,14 @@ public class SeekerController : NetworkBehaviour
         }
     }
     
-    // ==================== 劈砍 ====================
     void Slash()
     {
+        if (testMode)
+        {
+            Debug.Log("🧪 [测试模式] 劈砍");
+            return;
+        }
+        
         if (!isLocalPlayer) return;
         
         Debug.Log("⚔️ 空格 劈砍");

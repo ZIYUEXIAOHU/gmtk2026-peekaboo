@@ -231,10 +231,13 @@ MonoBehaviour:
   syncDirection: 0
   syncMode: 0
   syncInterval: 0
-  moveSpeed: 4
+  moveSpeed: 5
   jumpForce: 10
   groundCheckRadius: 0.2
   groundCheckPoint: {fileID: 0}
   groundLayer:
     serializedVersion: 2
     m_Bits: 8
+  testMode: 1
+  testJumpKey: 119
+  testPlaceKey: 102

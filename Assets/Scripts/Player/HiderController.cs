@@ -12,6 +12,11 @@ public class HiderController : NetworkBehaviour
     public Transform groundCheckPoint;
     public LayerMask groundLayer;
     
+    [Header("测试模式")]
+    public bool testMode = false;           // 勾选后无需联网即可测试
+    public KeyCode testJumpKey = KeyCode.W;
+    public KeyCode testPlaceKey = KeyCode.F;
+    
     private Rigidbody2D rb;
     private SpriteRenderer spriteRenderer;
     private float moveInput;
@@ -26,7 +31,6 @@ public class HiderController : NetworkBehaviour
 
     void OnEnable()
     {
-        // 选身份后才启用：补一次本地输入就绪，不改任何数值
         SetupController();
     }
 
@@ -41,6 +45,12 @@ public class HiderController : NetworkBehaviour
         {
             rb.gravityScale = 3f;
             rb.constraints = RigidbodyConstraints2D.FreezeRotation;
+            
+            // ===== 防止穿透 =====
+            rb.collisionDetectionMode = CollisionDetectionMode2D.Continuous;
+            rb.interpolation = RigidbodyInterpolation2D.Interpolate;
+            rb.sleepMode = RigidbodySleepMode2D.NeverSleep;
+            rb.useFullKinematicContacts = true;
         }
         
         if (groundCheckPoint == null)
@@ -55,6 +65,17 @@ public class HiderController : NetworkBehaviour
                 go.transform.localPosition = new Vector3(0, -0.5f, 0);
                 groundCheckPoint = go.transform;
             }
+        }
+        
+        // ===== 测试模式：直接启用 =====
+        if (testMode)
+        {
+            isLocalPlayerReady = true;
+            enabled = true;
+            if (spriteRenderer != null)
+                spriteRenderer.color = new Color(0.2f, 0.8f, 0.2f);
+            Debug.Log("🧪 测试模式已启用，无需联网");
+            return;
         }
         
         if (!isLocalPlayer)
@@ -73,11 +94,12 @@ public class HiderController : NetworkBehaviour
     
     void Update()
     {
-        if (!isLocalPlayerReady || !isLocalPlayer) return;
+        if (!isLocalPlayerReady) return;
+        if (!testMode && !isLocalPlayer) return;
         
         moveInput = Input.GetAxisRaw("Horizontal");
         
-        if (Input.GetKeyDown(KeyCode.W) || Input.GetKeyDown(KeyCode.Space))
+        if (Input.GetKeyDown(testJumpKey) || Input.GetKeyDown(KeyCode.Space))
         {
             Jump();
         }
@@ -87,7 +109,7 @@ public class HiderController : NetworkBehaviour
             DropDown();
         }
         
-        if (Input.GetKeyDown(KeyCode.F))
+        if (Input.GetKeyDown(testPlaceKey))
         {
             PlaceItem();
         }
@@ -97,7 +119,8 @@ public class HiderController : NetworkBehaviour
     
     void FixedUpdate()
     {
-        if (!isLocalPlayerReady || !isLocalPlayer) return;
+        if (!isLocalPlayerReady) return;
+        if (!testMode && !isLocalPlayer) return;
         
         Vector2 velocity = rb.velocity;
         velocity.x = moveInput * moveSpeed;
@@ -108,20 +131,17 @@ public class HiderController : NetworkBehaviour
     
     void Jump()
     {
-        // ===== 强制限制：只能跳1次 =====
         if (hasJumped && !isGrounded)
         {
             Debug.Log("⚠️ 已经跳过了，不能二段跳");
             return;
         }
         
-        // 落地重置
         if (isGrounded)
         {
             hasJumped = false;
         }
         
-        // 执行跳跃
         rb.velocity = new Vector2(rb.velocity.x, jumpForce);
         hasJumped = true;
         isGrounded = false;
@@ -183,7 +203,6 @@ public class HiderController : NetworkBehaviour
         bool wasGrounded = isGrounded;
         isGrounded = hits.Length > 0;
         
-        // 落地时重置
         if (!wasGrounded && isGrounded)
         {
             hasJumped = false;
@@ -201,6 +220,12 @@ public class HiderController : NetworkBehaviour
     
     void PlaceItem()
     {
+        if (testMode)
+        {
+            Debug.Log("🧪 [测试模式] 放置物品");
+            return;
+        }
+        
         if (!isLocalPlayer) return;
         
         Debug.Log("F 放置物品");

@@ -52,6 +52,19 @@ public class ScoreUIController : MonoBehaviour
         }
         
         Debug.Log($"📏 初始高度 - Content: {cachedContentHeight}, ScorePanel: {cachedPanelHeight}");
+        
+        // ===== 先展开初始化，再折叠隐藏（防止未初始化） =====
+        ExpandScoreList();
+        CollapseScoreList();
+        
+        // 确保按钮文字正确
+        if (toggleBtn != null)
+        {
+            TextMeshProUGUI btnText = toggleBtn.GetComponentInChildren<TextMeshProUGUI>();
+            if (btnText != null)
+                btnText.text = "▶";
+        }
+        isExpanded = false;
     }
     
     void ToggleScoreList()
@@ -76,32 +89,37 @@ public class ScoreUIController : MonoBehaviour
     
     void ExpandScoreList()
     {
-        // ===== 1. 启用 ContentHeightLimiter =====
+        // ===== 1. 先显示 ScorePanel =====
+        if (scorePanelRect != null)
+            scorePanelRect.gameObject.SetActive(true);
+        
+        // ===== 2. 启用 ContentHeightLimiter =====
         if (heightLimiter != null)
         {
             heightLimiter.enabled = true;
             Debug.Log("✅ ContentHeightLimiter 已启用");
         }
         
-        // ===== 2. 显示 ScoreList =====
+        // ===== 3. 显示 ScoreList =====
         if (scoreList != null)
             scoreList.SetActive(true);
         
-        // ===== 3. 恢复 Content 高度 =====
+        // ===== 4. 恢复 Content 高度 =====
         if (contentRect != null)
         {
             contentRect.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, cachedContentHeight);
+            contentRect.anchoredPosition = new Vector2(0, 0);
             Debug.Log($"📏 Content 恢复高度: {cachedContentHeight}");
         }
         
-        // ===== 4. 恢复 ScorePanel 高度 =====
+        // ===== 5. 恢复 ScorePanel 高度 =====
         if (scorePanelRect != null)
         {
             scorePanelRect.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, cachedPanelHeight);
             Debug.Log($"📏 ScorePanel 恢复高度: {cachedPanelHeight}");
         }
         
-        // ===== 5. 刷新 ContentHeightLimiter =====
+        // ===== 6. 刷新 ContentHeightLimiter =====
         if (heightLimiter != null)
         {
             heightLimiter.Refresh();
@@ -112,7 +130,7 @@ public class ScoreUIController : MonoBehaviour
     
     void CollapseScoreList()
     {
-        // ===== 1. 先禁用 ContentHeightLimiter（防止它覆盖高度） =====
+        // ===== 1. 先禁用 ContentHeightLimiter =====
         if (heightLimiter != null)
         {
             heightLimiter.enabled = false;
@@ -131,26 +149,11 @@ public class ScoreUIController : MonoBehaviour
             if (cachedPanelHeight < 10f) cachedPanelHeight = 200f;
         }
         
-        // ===== 3. Content 高度设为 60 =====
-        if (contentRect != null)
-        {
-            contentRect.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, collapsedHeight);
-            contentRect.anchoredPosition = new Vector2(contentRect.anchoredPosition.x, 0);
-            Debug.Log($"📏 Content 折叠高度: {collapsedHeight}");
-        }
-        
-        // ===== 4. ScorePanel 高度设为 60 =====
+        // ===== 3. 隐藏整个 ScorePanel =====
         if (scorePanelRect != null)
-        {
-            scorePanelRect.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, collapsedHeight);
-            Debug.Log($"📏 ScorePanel 折叠高度: {collapsedHeight}");
-        }
+            scorePanelRect.gameObject.SetActive(false);
         
-        // ===== 5. 隐藏 ScoreList =====
-        if (scoreList != null)
-            scoreList.SetActive(false);
-        
-        Debug.Log($"📊 得分列表已折叠 (缓存 - Content: {cachedContentHeight}, ScorePanel: {cachedPanelHeight})");
+        Debug.Log($"📊 得分列表已折叠，ScorePanel 已隐藏");
     }
     
     public void UpdateScoreList()
@@ -179,6 +182,13 @@ public class ScoreUIController : MonoBehaviour
         }
         
         Debug.Log($"📊 得分列表已更新，共 {scoreItems.Count} 名玩家");
+        
+        // ===== 刷新高度 =====
+        if (heightLimiter != null && isExpanded)
+        {
+            heightLimiter.Refresh();
+            Debug.Log("📏 刷新得分列表高度");
+        }
     }
     
     void ClearScoreItems()
