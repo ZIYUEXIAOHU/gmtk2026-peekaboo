@@ -45,7 +45,7 @@ public class HiderUIController : MonoBehaviour
     
     void Start()
     {
-        itemTable = Resources.Load<ItemTable>("Data/ItemTable");
+        itemTable = Resources.Load<ItemTable>("ItemTable");
         if (itemTable == null)
         {
             Debug.LogWarning("⚠️ ItemTable 未找到");
