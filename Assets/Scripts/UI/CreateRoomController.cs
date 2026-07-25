@@ -12,30 +12,66 @@ public class CreateRoomController : MonoBehaviour
     public Button createConfirmBtn;
     public Button backBtn;  // 返回按钮
     public TextMeshProUGUI createStatusText;
+    [Tooltip("可选：展示房间短码")]
+    public TextMeshProUGUI roomCodeText;
     
     [Header("主控制器")]
     public MainMenuController mainMenuController;
     
     private CustomNetworkManager netManager;
     private ManualDiscovery discovery;
+    private bool _waitingEnterScene;
     
-    // ===== 房间错误回调（契约）=====
     private void OnRoomError(RoomError error)
     {
-        if (error.op == RoomOp.Create)
+        if (error.op != RoomOp.Create && error.op != RoomOp.Find) return;
+
+        string errorMsg = error.reason switch
         {
-            string errorMsg = error.reason switch
+            RoomErrorReason.Timeout => "⏰ 创建房间超时",
+            RoomErrorReason.RoomFull => "👥 房间已满",
+            RoomErrorReason.ConnectionFailed => "🔌 网络连接失败",
+            RoomErrorReason.AlreadyInRoom => "⚠️ 已在房间中",
+            RoomErrorReason.SlotFull => error.message == "Seeker"
+                ? "⚠️ 抓捕者已满！"
+                : "⚠️ 躲藏者已满！",
+            RoomErrorReason.RoleNotSelected => "⚠️ 请先选择身份",
+            _ => $"❌ 创建失败：{error.message}"
+        };
+
+        ShowStatus(errorMsg, Color.red);
+        _waitingEnterScene = false;
+    }
+
+    void OnConnectionStateChanged(RoomConnectionState state)
+    {
+        if (!_waitingEnterScene) return;
+
+        if (state == RoomConnectionState.InRoom)
+        {
+            string code = GameContract.IsRoomBound
+                ? GameContract.RoomState.CurrentRoomCode
+                : string.Empty;
+
+            if (!string.IsNullOrEmpty(code))
             {
-                RoomErrorReason.Timeout => "⏰ 创建房间超时",
-                RoomErrorReason.RoomFull => "👥 房间已满",
-                RoomErrorReason.ConnectionFailed => "🔌 网络连接失败",
-                RoomErrorReason.AlreadyInRoom => "⚠️ 已在房间中",
-                _ => $"❌ 创建失败：{error.message}"
-            };
-            
-            createStatusText.text = errorMsg;
-            createStatusText.color = Color.red;
-            createStatusText.gameObject.SetActive(true);
+                ShowStatus($"✅ 创建成功！短码：{code}", Color.green);
+                if (roomCodeText != null)
+                {
+                    roomCodeText.gameObject.SetActive(true);
+                    roomCodeText.text = code;
+                }
+            }
+            else
+            {
+                ShowStatus("✅ 房间创建成功！正在进入...", Color.green);
+            }
+
+            StartCoroutine(DelayedEnterGameScene());
+        }
+        else if (state == RoomConnectionState.Failed)
+        {
+            _waitingEnterScene = false;
         }
     }
     
@@ -52,6 +88,9 @@ public class CreateRoomController : MonoBehaviour
         
         roomNameInput.text = GetDefaultRoomName();
         maxPlayerDropdown.value = 2;
+
+        if (roomCodeText != null)
+            roomCodeText.gameObject.SetActive(false);
         
         SubscribeEvents();
     }
@@ -63,6 +102,7 @@ public class CreateRoomController : MonoBehaviour
             if (GameContract.IsRoomBound)
             {
                 GameContract.RoomEvents.OnRoomError += OnRoomError;
+                GameContract.RoomEvents.OnConnectionStateChanged += OnConnectionStateChanged;
             }
         }
         catch (System.Exception e)
@@ -78,6 +118,7 @@ public class CreateRoomController : MonoBehaviour
             if (GameContract.IsRoomBound)
             {
                 GameContract.RoomEvents.OnRoomError -= OnRoomError;
+                GameContract.RoomEvents.OnConnectionStateChanged -= OnConnectionStateChanged;
             }
         }
         catch { }
@@ -94,61 +135,64 @@ public class CreateRoomController : MonoBehaviour
         string roomName = roomNameInput.text.Trim();
         if (string.IsNullOrEmpty(roomName))
         {
-            createStatusText.text = "❌ 请输入房间名称！";
-            createStatusText.color = Color.red;
-            createStatusText.gameObject.SetActive(true);
+            ShowStatus("❌ 请输入房间名称！", Color.red);
+            return;
+        }
+
+        if (GameContract.IsRoomBound &&
+            GameContract.RoomState.PreferredRole == PlayerRole.None)
+        {
+            ShowStatus("⚠️ 请先选择身份", Color.red);
             return;
         }
         
         int maxPlayers = GetMaxPlayers();
-        
-        createStatusText.text = $"⏳ 正在创建房间 \"{roomName}\"...";
-        createStatusText.color = Color.yellow;
-        createStatusText.gameObject.SetActive(true);
+        ShowStatus($"⏳ 正在创建房间 \"{roomName}\"...", Color.yellow);
+        _waitingEnterScene = true;
         
         if (GameContract.IsRoomBound)
         {
             Debug.Log($"[契约] 创建房间：{roomName}，最大人数：{maxPlayers}");
             GameContract.RoomCommands.CreateRoom(roomName, maxPlayers);
+            return;
         }
-        else
+        
+        if (netManager == null)
         {
-            if (netManager == null)
-            {
-                createStatusText.text = "❌ 错误：找不到网络管理器！";
-                createStatusText.color = Color.red;
-                createStatusText.gameObject.SetActive(true);
-                return;
-            }
-            
-            PlayerPrefs.SetString("RoomName", roomName);
-            netManager.maxConnections = maxPlayers;
-            netManager.StartHost();
-            
-            if (discovery != null)
-            {
-                discovery.StartBroadcasting();
-            }
+            ShowStatus("❌ 错误：找不到网络管理器！", Color.red);
+            _waitingEnterScene = false;
+            return;
         }
         
-        createStatusText.text = $"✅ 房间 \"{roomName}\" 创建成功！正在进入选角场景...";
-        createStatusText.color = Color.green;
+        PlayerPrefs.SetString("RoomName", roomName);
+        netManager.maxConnections = maxPlayers;
+        netManager.StartHost();
         
-        Debug.Log($"房间创建成功：{roomName}，最大人数：{maxPlayers}，即将进入选角场景");
+        if (discovery != null)
+            discovery.StartBroadcasting();
 
+        ShowStatus($"✅ 房间 \"{roomName}\" 创建成功！正在进入...", Color.green);
         StartCoroutine(DelayedEnterGameScene());
+    }
+
+    void ShowStatus(string msg, Color color)
+    {
+        if (createStatusText == null) return;
+        createStatusText.text = msg;
+        createStatusText.color = color;
+        createStatusText.gameObject.SetActive(true);
     }
     
     IEnumerator DelayedEnterGameScene()
     {
         yield return new WaitForSeconds(0.8f);
+        _waitingEnterScene = false;
         
         if (mainMenuController != null)
-        {
             mainMenuController.ShowMainMenu();
-        }
         
-        createStatusText.gameObject.SetActive(false);
+        if (createStatusText != null)
+            createStatusText.gameObject.SetActive(false);
         
         if (netManager != null && !string.IsNullOrEmpty(netManager.gameScene))
         {
@@ -170,19 +214,16 @@ public class CreateRoomController : MonoBehaviour
     void OnRoomNameEndEdit(string text)
     {
         if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter))
-        {
             CreateRoom();
-        }
     }
     
     void OnBackClicked()
     {
         Debug.Log("← 返回主菜单");
+        _waitingEnterScene = false;
         
         if (mainMenuController != null)
-        {
             mainMenuController.ShowMainMenu();
-        }
         
         gameObject.SetActive(false);
     }
@@ -194,5 +235,11 @@ public class CreateRoomController : MonoBehaviour
         createStatusText.text = "填写信息创建房间";
         createStatusText.color = Color.white;
         createStatusText.gameObject.SetActive(false);
+        if (roomCodeText != null)
+        {
+            roomCodeText.text = string.Empty;
+            roomCodeText.gameObject.SetActive(false);
+        }
+        _waitingEnterScene = false;
     }
 }

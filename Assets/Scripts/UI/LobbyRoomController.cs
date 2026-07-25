@@ -21,6 +21,8 @@ public class LobbyRoomController : MonoBehaviour
     public TextMeshProUGUI hiderStatusText;
     public TextMeshProUGUI seekerStatusText;
     public TextMeshProUGUI statusText;
+    [Tooltip("可选：单独展示房间短码；为空则拼进 statusText")]
+    public TextMeshProUGUI roomCodeText;
     
     [Header("按钮")]
     public Button readyBtn;
@@ -40,6 +42,8 @@ public class LobbyRoomController : MonoBehaviour
     private bool hasSelectedRole = false;
     private bool isLocked = false;
     private bool isHost = false;
+    /// <summary>进房前偏好已消费（或用户点了重新选择），不再自动 SelectRole。</summary>
+    private bool preferredRoleConsumed;
     
     private bool subscribedToRoleSlots;
     
@@ -111,8 +115,8 @@ public class LobbyRoomController : MonoBehaviour
         ShowLobbyUI();
         
         UpdateRoleButtons();
-        UpdateStatusText("选择你的身份");
         UpdatePlayerList();
+        RefreshRoomCodeDisplay();
         StartCoroutine(DelayedContractRefresh());
     }
 
@@ -122,6 +126,8 @@ public class LobbyRoomController : MonoBehaviour
         {
             yield return new WaitForSeconds(0.25f);
             TrySubscribeGameEvents();
+            RefreshRoomCodeDisplay();
+            SyncRoleFromPreferredOrPlayer();
 
             if (GameContract.IsBound)
             {
@@ -142,6 +148,7 @@ public class LobbyRoomController : MonoBehaviour
 
         GameContract.Events.OnRoleSlotsChanged += OnRoleSlotsChanged;
         GameContract.Events.OnPhaseChanged += OnPhaseChanged;
+        GameContract.Events.OnCommandRejected += OnCommandRejected;
         subscribedToRoleSlots = true;
 
         if (GameContract.State.Phase != GamePhase.Waiting)
@@ -271,6 +278,7 @@ public class LobbyRoomController : MonoBehaviour
             {
                 GameContract.Events.OnRoleSlotsChanged += OnRoleSlotsChanged;
                 GameContract.Events.OnPhaseChanged += OnPhaseChanged;
+                GameContract.Events.OnCommandRejected += OnCommandRejected;
                 subscribedToRoleSlots = true;
             }
         }
@@ -291,6 +299,7 @@ public class LobbyRoomController : MonoBehaviour
             {
                 GameContract.Events.OnRoleSlotsChanged -= OnRoleSlotsChanged;
                 GameContract.Events.OnPhaseChanged -= OnPhaseChanged;
+                GameContract.Events.OnCommandRejected -= OnCommandRejected;
             }
         }
         catch { }
@@ -300,10 +309,111 @@ public class LobbyRoomController : MonoBehaviour
     {
         if (lobbyUI != null) lobbyUI.SetActive(true);
         if (gameUI != null) gameUI.SetActive(false);
-        if (roleSelectPanel != null) roleSelectPanel.SetActive(true);
-        if (reselectBtn != null) reselectBtn.gameObject.SetActive(false);
-        UpdateRoleUI(PlayerRole.None);
+        gameStarted = false;
+
+        RefreshRoomCodeDisplay();
+        SyncRoleFromPreferredOrPlayer();
+
+        if (!hasSelectedRole)
+        {
+            if (roleSelectPanel != null) roleSelectPanel.SetActive(true);
+            if (reselectBtn != null) reselectBtn.gameObject.SetActive(false);
+            UpdateRoleUI(PlayerRole.None);
+            UpdateStatusText("选择你的身份");
+        }
+
         UpdateButtonVisibility();
+        RefreshRoomCodeDisplay();
+    }
+
+    /// <summary>用进房前偏好 / 已同步身份跳过二次强制选角。</summary>
+    void SyncRoleFromPreferredOrPlayer()
+    {
+        if (gameStarted || isLocked) return;
+
+        PlayerRole resolved = PlayerRole.None;
+
+        RoomPlayer localPlayer = GetLocalRoomPlayer();
+        if (localPlayer != null && localPlayer.Role != PlayerRole.None)
+            resolved = localPlayer.Role;
+        else if (GameContract.IsBound &&
+                 GameContract.State.LocalPlayer != null &&
+                 GameContract.State.LocalPlayer.Role != PlayerRole.None)
+            resolved = GameContract.State.LocalPlayer.Role;
+
+        PlayerRole preferred = PlayerRole.None;
+        if (GameContract.IsRoomBound)
+            preferred = GameContract.RoomState.PreferredRole;
+
+        // 进房前已选：首次同步时发给服务器并跳过选角 UI
+        if (resolved == PlayerRole.None && preferred != PlayerRole.None && !preferredRoleConsumed)
+        {
+            preferredRoleConsumed = true;
+            if (GameContract.IsBound)
+                GameContract.Commands.SelectRole(preferred);
+            resolved = preferred;
+        }
+        else if (resolved == PlayerRole.None &&
+                 preferred != PlayerRole.None &&
+                 preferredRoleConsumed &&
+                 hasSelectedRole &&
+                 selectedRole == preferred &&
+                 GameContract.IsBound)
+        {
+            // UI 已按偏好显示，但服务端尚未确认（契约晚绑定）
+            if (localPlayer != null && localPlayer.Role == PlayerRole.None)
+                GameContract.Commands.SelectRole(preferred);
+            resolved = preferred;
+        }
+
+        if (resolved == PlayerRole.None)
+            return;
+
+        // 已与 UI 一致则不必反复刷状态文案
+        bool alreadyUiSelected = hasSelectedRole && selectedRole == resolved;
+
+        selectedRole = resolved;
+        hasSelectedRole = true;
+
+        if (roleSelectPanel != null)
+            roleSelectPanel.SetActive(false);
+        if (reselectBtn != null)
+            reselectBtn.gameObject.SetActive(true);
+
+        if (gameStarted)
+            UpdateRoleUI(resolved);
+        else
+            UpdateRoleUI(PlayerRole.None);
+
+        UpdateRoleButtons();
+        UpdateButtonVisibility();
+        if (!alreadyUiSelected)
+            UpdateStatusText($"✅ 已选择: {GetRoleDisplayName(resolved)}");
+        RefreshRoomCodeDisplay();
+    }
+
+    string GetCurrentRoomCode()
+    {
+        if (!GameContract.IsRoomBound) return string.Empty;
+        return GameContract.RoomState.CurrentRoomCode ?? string.Empty;
+    }
+
+    void RefreshRoomCodeDisplay()
+    {
+        string code = GetCurrentRoomCode();
+
+        if (roomCodeText != null)
+        {
+            if (string.IsNullOrEmpty(code))
+            {
+                roomCodeText.gameObject.SetActive(false);
+            }
+            else
+            {
+                roomCodeText.gameObject.SetActive(true);
+                roomCodeText.text = $"房间码：{code}";
+            }
+        }
     }
     
     void ShowGameUI()
@@ -335,6 +445,9 @@ public class LobbyRoomController : MonoBehaviour
 
         if (GameContract.IsBound && GameContract.State.LocalPlayer != null)
             return GameContract.State.LocalPlayer.Role;
+
+        if (GameContract.IsRoomBound && GameContract.RoomState.PreferredRole != PlayerRole.None)
+            return GameContract.RoomState.PreferredRole;
 
         return PlayerRole.None;
     }
@@ -598,6 +711,7 @@ public class LobbyRoomController : MonoBehaviour
 
         Debug.Log("🔄 重新选择身份");
 
+        preferredRoleConsumed = true; // 不要再自动套用进房前偏好
         selectedRole = PlayerRole.None;
         hasSelectedRole = false;
         isReady = false;
@@ -640,6 +754,7 @@ public class LobbyRoomController : MonoBehaviour
         UpdateStatusText("选择你的身份");
         UpdateRoleButtons();
         UpdatePlayerList();
+        RefreshRoomCodeDisplay();
         if (!GameContract.IsBound)
             UpdateRoleCounts();
         
@@ -736,7 +851,10 @@ public class LobbyRoomController : MonoBehaviour
     {
         if (state == RoomConnectionState.InRoom)
         {
-            UpdateStatusText("✅ 已加入房间");
+            RefreshRoomCodeDisplay();
+            SyncRoleFromPreferredOrPlayer();
+            if (!hasSelectedRole)
+                UpdateStatusText("✅ 已加入房间");
         }
         else if (state == RoomConnectionState.Failed)
         {
@@ -755,10 +873,31 @@ public class LobbyRoomController : MonoBehaviour
     void OnRoleSlotsChanged(RoleSlots slots)
     {
         roleSlots = slots;
+        SyncRoleFromPreferredOrPlayer();
         UpdateRoleButtons();
-        UpdateStatusText($"👥 {slots.hiderCount + slots.seekerCount} 人已选择身份");
         UpdatePlayerList();
         UpdateStartGameButtonInteractable();
+        if (!hasSelectedRole)
+            UpdateStatusText($"👥 {slots.hiderCount + slots.seekerCount} 人已选择身份");
+        RefreshRoomCodeDisplay();
+    }
+
+    void OnCommandRejected(CommandRejected rejected)
+    {
+        if (rejected.command != GameCommandType.SelectRole) return;
+
+        if (rejected.reason == RejectReason.RoleFull)
+        {
+            UpdateStatusText(selectedRole == PlayerRole.Seeker
+                ? "⚠️ 抓捕者已满！"
+                : "⚠️ 躲藏者已满！");
+            hasSelectedRole = false;
+            selectedRole = PlayerRole.None;
+            UpdateRoleButtons();
+            return;
+        }
+
+        UpdateStatusText($"⚠️ 选择身份失败：{rejected.reason}");
     }
     
     void OnPhaseChanged(GamePhase phase, float duration)
@@ -813,7 +952,15 @@ public class LobbyRoomController : MonoBehaviour
     
     void UpdateStatusText(string msg)
     {
-        if (statusText != null)
+        if (statusText == null) return;
+
+        string code = GetCurrentRoomCode();
+        // 无独立短码控件时，把房间码拼进状态栏，避免被后续状态覆盖后看不到
+        if (roomCodeText == null && !string.IsNullOrEmpty(code))
+            statusText.text = $"房间码：{code}\n{msg}";
+        else
             statusText.text = msg;
+
+        RefreshRoomCodeDisplay();
     }
 }

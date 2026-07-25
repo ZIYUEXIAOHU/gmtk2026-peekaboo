@@ -1175,16 +1175,7 @@ public class NetworkGameState : NetworkBehaviour, IGameStateReadonly, IGameComma
 
     static void ComputeRoleMax(int totalPlayers, out int seekerMaxOut, out int hiderMaxOut)
     {
-        if (totalPlayers < 2)
-        {
-            seekerMaxOut = 1;
-            hiderMaxOut = 1;
-            return;
-        }
-
-        seekerMaxOut = Mathf.Max(1, totalPlayers / 3);
-        hiderMaxOut = totalPlayers - seekerMaxOut;
-        if (hiderMaxOut < 1) hiderMaxOut = 1;
+        RoleSlots.ComputeRoleMax(totalPlayers, out seekerMaxOut, out hiderMaxOut);
     }
 
     [Server]

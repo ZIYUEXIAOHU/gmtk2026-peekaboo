@@ -114,12 +114,21 @@ public class ManualDiscovery : MonoBehaviour
             int maxPlayers = nm.maxConnections;
             int status = (int)ResolveBroadcastRoomStatus();
             string gameMode = PlayerPrefs.GetString("GameMode", "经典模式");
-            // 第 7 段：房间短码（旧客户端可忽略多余字段）
+            // 第 7 段：房间短码；第 8/9 段：已选抓捕/躲藏人数（旧客户端可忽略）
             string roomCode = NetworkRoomService.Instance != null
                 ? NetworkRoomService.Instance.CurrentRoomCode
                 : string.Empty;
+            int seekerCount = 0;
+            int hiderCount = 0;
+            if (NetworkGameState.Instance != null)
+            {
+                RoleSlots slots = NetworkGameState.Instance.Slots;
+                seekerCount = slots.seekerCount;
+                hiderCount = slots.hiderCount;
+            }
 
-            string data = $"{roomName}|{hostName}|{currentPlayers}|{maxPlayers}|{status}|{gameMode}|{roomCode}";
+            string data =
+                $"{roomName}|{hostName}|{currentPlayers}|{maxPlayers}|{status}|{gameMode}|{roomCode}|{seekerCount}|{hiderCount}";
             byte[] bytes = Encoding.UTF8.GetBytes(data);
 
             using (UdpClient client = new UdpClient())
@@ -347,6 +356,10 @@ public class ManualDiscovery : MonoBehaviour
             RoomStatus status;
             string gameMode = info[5];
             string roomCode = info.Length > 6 ? info[6] : string.Empty;
+            int seekerCount = 0;
+            int hiderCount = 0;
+            if (info.Length > 7) int.TryParse(info[7], out seekerCount);
+            if (info.Length > 8) int.TryParse(info[8], out hiderCount);
 
             if (!int.TryParse(info[2], out currentPlayers))
                 currentPlayers = 0;
@@ -360,7 +373,9 @@ public class ManualDiscovery : MonoBehaviour
             int port = GetTransportGamePort();
             string serverId = $"{ipAddress}:{port}";
 
-            Debug.Log($"发现房间：{roomName} @ {ipAddress} ({currentPlayers}/{maxPlayers}人) code={roomCode}");
+            Debug.Log(
+                $"发现房间：{roomName} @ {ipAddress} ({currentPlayers}/{maxPlayers}人) code={roomCode} " +
+                $"S{seekerCount}/H{hiderCount}");
 
             float existingPing = -1f;
             if (roomCache.TryGetValue(serverId, out RoomItemData cached) && cached.ping >= 0f)
@@ -378,7 +393,9 @@ public class ManualDiscovery : MonoBehaviour
                 status = status,
                 gameMode = gameMode,
                 ping = existingPing,
-                roomCode = roomCode
+                roomCode = roomCode,
+                seekerCount = seekerCount,
+                hiderCount = hiderCount
             };
 
             roomCache[serverId] = discovered;
