@@ -3,6 +3,10 @@ using UnityEngine;
 
 public class SeekerController : NetworkBehaviour
 {
+    static readonly int IsMovingHash = Animator.StringToHash("IsMoving");
+    static readonly int FacingDirectionHash = Animator.StringToHash("FacingDirection");
+    static readonly int AttackHash = Animator.StringToHash("Attack");
+
     [Header("移动设置")]
     public float moveSpeed = GameConstants.SeekerMoveSpeed;  // 使用契约常量 0.5
     public float speedMultiplier = 10f;  // 速度倍率，可在 Inspector 调整
@@ -15,6 +19,11 @@ public class SeekerController : NetworkBehaviour
     public float groundCheckRadius = 0.2f;
     public Transform groundCheckPoint;
     public LayerMask groundLayer;
+
+    [Header("动画")]
+    public Animator animator;
+    public NetworkAnimator networkAnimator;
+    public SpriteRenderer visualSpriteRenderer;
     
     [Header("测试模式")]
     public bool testMode = false;           // 勾选后无需联网即可测试
@@ -22,10 +31,10 @@ public class SeekerController : NetworkBehaviour
     public KeyCode testSlashKey = KeyCode.Space;
     
     private Rigidbody2D rb;
-    private SpriteRenderer spriteRenderer;
     private float moveInput;
     private bool isGrounded;
     private bool isLocalPlayerReady = false;
+    private float facingDirection = 0f;
     
     void Start()
     {
@@ -41,8 +50,7 @@ public class SeekerController : NetworkBehaviour
     {
         if (rb == null)
             rb = GetComponent<Rigidbody2D>();
-        if (spriteRenderer == null)
-            spriteRenderer = GetComponent<SpriteRenderer>();
+        CacheAnimationRefs();
         
         if (rb != null)
         {
@@ -75,8 +83,6 @@ public class SeekerController : NetworkBehaviour
         {
             isLocalPlayerReady = true;
             enabled = true;
-            if (spriteRenderer != null)
-                spriteRenderer.color = new Color(0.9f, 0.3f, 0.2f);
             Debug.Log("🧪 SeekerController 测试模式已启用，无需联网");
             return;
         }
@@ -92,9 +98,34 @@ public class SeekerController : NetworkBehaviour
         isLocalPlayerReady = true;
         moveSpeed = GameConstants.SeekerMoveSpeed * speedMultiplier;
         Debug.Log("✅ SeekerController: 本地玩家已就绪");
-        
-        if (spriteRenderer != null)
-            spriteRenderer.color = new Color(0.9f, 0.3f, 0.2f);
+    }
+
+    void CacheAnimationRefs()
+    {
+        if (animator == null)
+        {
+            Transform visual = transform.Find("Visual_Seeker");
+            if (visual != null)
+                animator = visual.GetComponent<Animator>();
+            if (animator == null)
+                animator = GetComponentInChildren<Animator>(true);
+        }
+
+        if (networkAnimator == null)
+        {
+            Transform visual = transform.Find("Visual_Seeker");
+            if (visual != null)
+                networkAnimator = visual.GetComponent<NetworkAnimator>();
+            if (networkAnimator == null)
+                networkAnimator = GetComponentInChildren<NetworkAnimator>(true);
+        }
+
+        if (visualSpriteRenderer == null)
+        {
+            Transform visual = transform.Find("Visual_Seeker");
+            if (visual != null)
+                visualSpriteRenderer = visual.GetComponent<SpriteRenderer>();
+        }
     }
     
     void Update()
@@ -117,8 +148,9 @@ public class SeekerController : NetworkBehaviour
             Slash();
         }
         
-        // ===== 更新朝向 =====
+        // ===== 更新朝向与动画 =====
         UpdateFacing();
+        UpdateAnimator();
     }
     
     void FixedUpdate()
@@ -149,10 +181,35 @@ public class SeekerController : NetworkBehaviour
     
     void UpdateFacing()
     {
-        if (moveInput > 0)
-            transform.localScale = new Vector3(1, 1, 1);
-        else if (moveInput < 0)
-            transform.localScale = new Vector3(-1, 1, 1);
+        if (moveInput > 0f)
+            facingDirection = 1f;
+        else if (moveInput < 0f)
+            facingDirection = -1f;
+
+        // 用 flipX 翻转外观，避免改根节点 localScale（NetworkTransform 不同步 scale）
+        if (visualSpriteRenderer != null)
+            visualSpriteRenderer.flipX = facingDirection < 0f;
+    }
+
+    void UpdateAnimator()
+    {
+        CacheAnimationRefs();
+        if (animator == null || !animator.isActiveAndEnabled)
+            return;
+
+        bool moving = Mathf.Abs(moveInput) > 0.01f;
+        animator.SetBool(IsMovingHash, moving);
+        // ±1 = 侧面朝向（由 NetworkAnimator 同步）；0 = 正面 Idle
+        animator.SetFloat(FacingDirectionHash, facingDirection);
+    }
+
+    void TriggerAttackAnimation()
+    {
+        CacheAnimationRefs();
+        if (networkAnimator != null && !testMode)
+            networkAnimator.SetTrigger(AttackHash);
+        else if (animator != null && animator.isActiveAndEnabled)
+            animator.SetTrigger(AttackHash);
     }
     
     void Investigate()
@@ -179,6 +236,8 @@ public class SeekerController : NetworkBehaviour
     
     void Slash()
     {
+        TriggerAttackAnimation();
+
         if (testMode)
         {
             Debug.Log("🧪 [测试模式] 劈砍");

@@ -39,6 +39,10 @@ public class RoomPlayer : NetworkBehaviour, IPlayerStateReadonly
     /// 由 NetworkGameState 在选 Hider / 进入 Prep 时填充，PlaceItem 时弹出队首。</summary>
     public readonly SyncList<int> itemQueue = new SyncList<int>();
 
+    [Header("角色外观（按 Role 显隐，全客户端）")]
+    public GameObject visualHider;
+    public GameObject visualSeeker;
+
     // ---- IPlayerStateReadonly ----
     public uint NetId => netId;
     public string PlayerName => playerName;
@@ -57,6 +61,8 @@ public class RoomPlayer : NetworkBehaviour, IPlayerStateReadonly
     {
         base.OnStartClient();
         CacheControllers();
+        CacheVisuals();
+        ApplyRoleVisuals(role);
         ApplyRoleControllers(role);
     }
 
@@ -64,6 +70,8 @@ public class RoomPlayer : NetworkBehaviour, IPlayerStateReadonly
     {
         base.OnStartLocalPlayer();
         CacheControllers();
+        CacheVisuals();
+        ApplyRoleVisuals(role);
         ApplyRoleControllers(role);
     }
 
@@ -75,9 +83,24 @@ public class RoomPlayer : NetworkBehaviour, IPlayerStateReadonly
             seekerController = GetComponent<SeekerController>();
     }
 
+    void CacheVisuals()
+    {
+        if (visualHider == null)
+        {
+            Transform t = transform.Find("Visual_Hider");
+            if (t != null) visualHider = t.gameObject;
+        }
+        if (visualSeeker == null)
+        {
+            Transform t = transform.Find("Visual_Seeker");
+            if (t != null) visualSeeker = t.gameObject;
+        }
+    }
+
     void OnRoleChanged(PlayerRole oldRole, PlayerRole newRole)
     {
         Debug.Log($"玩家 {playerName} 身份: {oldRole} -> {newRole}");
+        ApplyRoleVisuals(newRole);
         ApplyRoleControllers(newRole);
     }
 
@@ -94,6 +117,22 @@ public class RoomPlayer : NetworkBehaviour, IPlayerStateReadonly
             hiderController.enabled = local && currentRole == PlayerRole.Hider;
         if (seekerController != null)
             seekerController.enabled = local && currentRole == PlayerRole.Seeker;
+    }
+
+    /// <summary>
+    /// 按身份切换 Hider/Seeker 外观子物体（所有客户端）。
+    /// </summary>
+    void ApplyRoleVisuals(PlayerRole currentRole)
+    {
+        CacheVisuals();
+
+        bool showHider = currentRole == PlayerRole.Hider;
+        bool showSeeker = currentRole == PlayerRole.Seeker;
+
+        if (visualHider != null)
+            visualHider.SetActive(showHider);
+        if (visualSeeker != null)
+            visualSeeker.SetActive(showSeeker);
     }
 
     void OnPlayerNameChanged(string oldVal, string newVal)
