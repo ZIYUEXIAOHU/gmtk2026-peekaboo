@@ -13,6 +13,7 @@
 // ============================================================
 
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using Mirror;
@@ -32,12 +33,15 @@ public class NetworkRoomService : MonoBehaviour, IRoomStateReadonly, IRoomComman
     [SerializeField] private float roomStaleTimeout = 6f;
     [Tooltip("JoinRoom 连接超时秒数，超时未连上则回 OnRoomError(Timeout)")]
     [SerializeField] private float joinTimeoutSeconds = 8f;
+    [Tooltip("JoinRoomByCode 在局域网寻找广播的超时秒数")]
+    [SerializeField] private float findByCodeTimeoutSeconds = 8f;
     [Tooltip("ManualDiscovery 当前固定使用的游戏端口，仅在 serverId 缺省端口时兜底")]
     [SerializeField] private int defaultPort = 7777;
 
     // ---- IRoomStateReadonly ----
     public RoomConnectionState ConnectionState { get; private set; } = RoomConnectionState.Disconnected;
     public IReadOnlyList<RoomInfo> RoomList => _roomListSnapshot;
+    public string CurrentRoomCode { get; private set; } = string.Empty;
 
     // ---- IRoomEvents ----
     public event Action<RoomConnectionState> OnConnectionStateChanged;
@@ -50,6 +54,11 @@ public class NetworkRoomService : MonoBehaviour, IRoomStateReadonly, IRoomComman
 
     private RoomOp _pendingOp = RoomOp.Unknown;
     private Coroutine _joinTimeoutCoroutine;
+    private Coroutine _findByCodeTimeoutCoroutine;
+    /// <summary>非空表示正在按短码寻找房间（已规范化大写）。</summary>
+    private string _searchingRoomCode;
+    /// <summary>按码加入时暂存，连接成功后再写入 CurrentRoomCode。</summary>
+    private string _pendingJoinRoomCode;
     private bool _leaveRequested;
 
     // ------------------------------------------------------------------
@@ -146,6 +155,10 @@ public class NetworkRoomService : MonoBehaviour, IRoomStateReadonly, IRoomComman
 
         _leaveRequested = false;
         _pendingOp = RoomOp.Create;
+        CancelFindByCodeTimeout();
+        ClearRoomCodeSearch();
+        _pendingJoinRoomCode = null;
+        CurrentRoomCode = string.Empty;
         SetConnectionState(RoomConnectionState.Connecting);
 
         try
@@ -177,8 +190,10 @@ public class NetworkRoomService : MonoBehaviour, IRoomStateReadonly, IRoomComman
         }
 
         _pendingOp = RoomOp.Unknown;
+        CurrentRoomCode = RoomCodeUtil.Generate();
         SetConnectionState(RoomConnectionState.InRoom);
         discovery?.StartBroadcasting();
+        Debug.Log($"[NetworkRoomService] 房间已创建，短码：{CurrentRoomCode}");
     }
 
     public void JoinRoom(string serverId)
@@ -213,28 +228,69 @@ public class NetworkRoomService : MonoBehaviour, IRoomStateReadonly, IRoomComman
             return;
         }
 
-        _leaveRequested = false;
-        _pendingOp = RoomOp.Join;
-        SetConnectionState(RoomConnectionState.Connecting);
+        BeginClientJoin(ip, port);
+    }
 
-        try
+    public void JoinRoomByCode(string roomCode)
+    {
+        EnsureRefs();
+
+        if (ConnectionState != RoomConnectionState.Disconnected &&
+            ConnectionState != RoomConnectionState.Failed)
         {
-            // Mirror NetworkManager.networkAddress 只接受主机名/IP；端口写入 Transport（PortTransport：KCP/Telepathy/SimpleWeb）。
-            networkManager.networkAddress = ip;
-            ApplyJoinTransportPort(port);
-            networkManager.StartClient();
-        }
-        catch (Exception e)
-        {
-            Debug.LogError($"[NetworkRoomService] 加入房间失败：{e.Message}");
-            _pendingOp = RoomOp.Unknown;
-            SetConnectionState(RoomConnectionState.Failed);
-            RaiseError(RoomOp.Join, RoomErrorReason.ConnectionFailed, e.Message);
+            RaiseError(RoomOp.Join, RoomErrorReason.AlreadyInRoom, $"当前状态 {ConnectionState} 下不允许加入房间");
             return;
         }
 
-        if (_joinTimeoutCoroutine != null) StopCoroutine(_joinTimeoutCoroutine);
-        _joinTimeoutCoroutine = StartCoroutine(JoinTimeoutRoutine());
+        if (!RoomCodeUtil.TryNormalize(roomCode, out string normalized))
+        {
+            RaiseError(RoomOp.Join, RoomErrorReason.RoomNotFound, $"无效房间短码：{roomCode}");
+            return;
+        }
+
+        if (discovery == null)
+        {
+            SetConnectionState(RoomConnectionState.Failed);
+            RaiseError(RoomOp.Join, RoomErrorReason.ConnectionFailed, "ManualDiscovery 未找到");
+            return;
+        }
+
+        if (networkManager == null)
+        {
+            SetConnectionState(RoomConnectionState.Failed);
+            RaiseError(RoomOp.Join, RoomErrorReason.ConnectionFailed, "CustomNetworkManager 未找到");
+            return;
+        }
+
+        _leaveRequested = false;
+        _pendingOp = RoomOp.Join;
+        _searchingRoomCode = normalized;
+        _pendingJoinRoomCode = normalized;
+
+        // 已缓存的发现结果可立刻命中（例如刚刷新过列表）
+        if (TryFindDiscoveredServerIdByCode(normalized, out string cachedServerId) &&
+            _discoveredRooms.TryGetValue(cachedServerId, out RoomItemData cachedRoom))
+        {
+            TryCompleteJoinByCode(cachedRoom);
+            return;
+        }
+
+        SetConnectionState(RoomConnectionState.Connecting);
+
+        discovery.StopListening();
+        if (!discovery.StartListening())
+        {
+            ClearRoomCodeSearch();
+            _pendingJoinRoomCode = null;
+            _pendingOp = RoomOp.Unknown;
+            SetConnectionState(RoomConnectionState.Failed);
+            RaiseError(RoomOp.Join, RoomErrorReason.ConnectionFailed, "局域网监听端口启动失败");
+            return;
+        }
+
+        if (_findByCodeTimeoutCoroutine != null) StopCoroutine(_findByCodeTimeoutCoroutine);
+        _findByCodeTimeoutCoroutine = StartCoroutine(FindByCodeTimeoutRoutine());
+        Debug.Log($"[NetworkRoomService] 正在按短码寻找房间：{normalized}");
     }
 
     public void LeaveRoom()
@@ -243,6 +299,10 @@ public class NetworkRoomService : MonoBehaviour, IRoomStateReadonly, IRoomComman
 
         _leaveRequested = true;
         CancelJoinTimeout();
+        CancelFindByCodeTimeout();
+        ClearRoomCodeSearch();
+        _pendingJoinRoomCode = null;
+        CurrentRoomCode = string.Empty;
         discovery?.StopBroadcasting();
 
         if (networkManager != null)
@@ -266,6 +326,13 @@ public class NetworkRoomService : MonoBehaviour, IRoomStateReadonly, IRoomComman
             return;
 
         CancelJoinTimeout();
+        CancelFindByCodeTimeout();
+        ClearRoomCodeSearch();
+        if (!string.IsNullOrEmpty(_pendingJoinRoomCode))
+        {
+            CurrentRoomCode = _pendingJoinRoomCode;
+            _pendingJoinRoomCode = null;
+        }
         _pendingOp = RoomOp.Unknown;
         SetConnectionState(RoomConnectionState.InRoom);
     }
@@ -273,12 +340,16 @@ public class NetworkRoomService : MonoBehaviour, IRoomStateReadonly, IRoomComman
     public void NotifyClientDisconnected()
     {
         CancelJoinTimeout();
+        CancelFindByCodeTimeout();
 
         // LeaveRoom 已主动设为 Disconnected，忽略后续 Mirror 回调，避免覆盖。
         if (_leaveRequested)
         {
             _leaveRequested = false;
             _pendingOp = RoomOp.Unknown;
+            ClearRoomCodeSearch();
+            _pendingJoinRoomCode = null;
+            CurrentRoomCode = string.Empty;
             if (ConnectionState != RoomConnectionState.Disconnected)
                 SetConnectionState(RoomConnectionState.Disconnected);
             return;
@@ -288,6 +359,9 @@ public class NetworkRoomService : MonoBehaviour, IRoomStateReadonly, IRoomComman
         {
             RoomOp op = _pendingOp == RoomOp.Unknown ? RoomOp.Join : _pendingOp;
             _pendingOp = RoomOp.Unknown;
+            ClearRoomCodeSearch();
+            _pendingJoinRoomCode = null;
+            CurrentRoomCode = string.Empty;
             SetConnectionState(RoomConnectionState.Failed);
             RaiseError(op, RoomErrorReason.ConnectionFailed, "连接过程中断开");
             return;
@@ -296,6 +370,8 @@ public class NetworkRoomService : MonoBehaviour, IRoomStateReadonly, IRoomComman
         if (ConnectionState == RoomConnectionState.InRoom)
         {
             _pendingOp = RoomOp.Unknown;
+            _pendingJoinRoomCode = null;
+            CurrentRoomCode = string.Empty;
             SetConnectionState(RoomConnectionState.Disconnected);
             return;
         }
@@ -307,6 +383,7 @@ public class NetworkRoomService : MonoBehaviour, IRoomStateReadonly, IRoomComman
     public void NotifyClientError(string reason)
     {
         CancelJoinTimeout();
+        CancelFindByCodeTimeout();
 
         if (_leaveRequested)
         {
@@ -316,6 +393,10 @@ public class NetworkRoomService : MonoBehaviour, IRoomStateReadonly, IRoomComman
 
         RoomOp op = _pendingOp == RoomOp.Unknown ? RoomOp.Join : _pendingOp;
         _pendingOp = RoomOp.Unknown;
+        ClearRoomCodeSearch();
+        _pendingJoinRoomCode = null;
+        if (ConnectionState != RoomConnectionState.InRoom)
+            CurrentRoomCode = string.Empty;
         SetConnectionState(RoomConnectionState.Failed);
         RaiseError(op, RoomErrorReason.ConnectionFailed, reason);
     }
@@ -329,7 +410,21 @@ public class NetworkRoomService : MonoBehaviour, IRoomStateReadonly, IRoomComman
         }
     }
 
-    private System.Collections.IEnumerator JoinTimeoutRoutine()
+    private void CancelFindByCodeTimeout()
+    {
+        if (_findByCodeTimeoutCoroutine != null)
+        {
+            StopCoroutine(_findByCodeTimeoutCoroutine);
+            _findByCodeTimeoutCoroutine = null;
+        }
+    }
+
+    private void ClearRoomCodeSearch()
+    {
+        _searchingRoomCode = null;
+    }
+
+    private IEnumerator JoinTimeoutRoutine()
     {
         yield return new WaitForSecondsRealtime(joinTimeoutSeconds);
         _joinTimeoutCoroutine = null;
@@ -338,11 +433,31 @@ public class NetworkRoomService : MonoBehaviour, IRoomStateReadonly, IRoomComman
 
         Debug.LogWarning("[NetworkRoomService] 加入房间超时");
         _pendingOp = RoomOp.Unknown;
+        _pendingJoinRoomCode = null;
+        CurrentRoomCode = string.Empty;
         SetConnectionState(RoomConnectionState.Failed);
         RaiseError(RoomOp.Join, RoomErrorReason.Timeout, "连接超时");
 
         if (networkManager != null && NetworkClient.active)
             networkManager.StopClient();
+    }
+
+    private IEnumerator FindByCodeTimeoutRoutine()
+    {
+        yield return new WaitForSecondsRealtime(findByCodeTimeoutSeconds);
+        _findByCodeTimeoutCoroutine = null;
+
+        if (string.IsNullOrEmpty(_searchingRoomCode)) yield break;
+        if (ConnectionState != RoomConnectionState.Connecting) yield break;
+
+        string code = _searchingRoomCode;
+        ClearRoomCodeSearch();
+        _pendingJoinRoomCode = null;
+        _pendingOp = RoomOp.Unknown;
+        CurrentRoomCode = string.Empty;
+        SetConnectionState(RoomConnectionState.Failed);
+        RaiseError(RoomOp.Join, RoomErrorReason.Timeout, $"未找到短码对应房间：{code}");
+        Debug.LogWarning($"[NetworkRoomService] 按短码寻找超时：{code}");
     }
 
     // ================================================================
@@ -360,9 +475,103 @@ public class NetworkRoomService : MonoBehaviour, IRoomStateReadonly, IRoomComman
             data.ping = existing.ping;
         }
 
+        // 保留已缓存的短码（ping 更新包可能未带码）
+        if (string.IsNullOrEmpty(data.roomCode) &&
+            _discoveredRooms.TryGetValue(data.serverId, out RoomItemData prev) &&
+            !string.IsNullOrEmpty(prev.roomCode))
+        {
+            data.roomCode = prev.roomCode;
+        }
+
         _discoveredRooms[data.serverId] = data;
         _lastSeenAt[data.serverId] = Time.unscaledTime;
         PublishRoomList();
+
+        TryCompleteJoinByCode(data);
+    }
+
+    /// <summary>若正在按短码寻找且本条广播命中，则转入实际 TCP Join。</summary>
+    private void TryCompleteJoinByCode(RoomItemData data)
+    {
+        if (string.IsNullOrEmpty(_searchingRoomCode) || data == null) return;
+        if (!RoomCodeUtil.TryNormalize(data.roomCode, out string discoveredCode)) return;
+        if (!string.Equals(discoveredCode, _searchingRoomCode, StringComparison.Ordinal)) return;
+
+        if (data.currentPlayers >= data.maxPlayers && data.maxPlayers > 0)
+        {
+            CancelFindByCodeTimeout();
+            ClearRoomCodeSearch();
+            _pendingJoinRoomCode = null;
+            _pendingOp = RoomOp.Unknown;
+            CurrentRoomCode = string.Empty;
+            SetConnectionState(RoomConnectionState.Failed);
+            RaiseError(RoomOp.Join, RoomErrorReason.RoomFull, $"房间已满：{data.serverId}");
+            return;
+        }
+
+        if (!TryParseServerId(data.serverId, out string ip, out int port))
+        {
+            CancelFindByCodeTimeout();
+            ClearRoomCodeSearch();
+            _pendingJoinRoomCode = null;
+            _pendingOp = RoomOp.Unknown;
+            CurrentRoomCode = string.Empty;
+            SetConnectionState(RoomConnectionState.Failed);
+            RaiseError(RoomOp.Join, RoomErrorReason.RoomNotFound, $"无法解析 serverId：{data.serverId}");
+            return;
+        }
+
+        string matchedCode = _searchingRoomCode;
+        CancelFindByCodeTimeout();
+        ClearRoomCodeSearch();
+        _pendingJoinRoomCode = matchedCode;
+        discovery?.StopListening();
+
+        Debug.Log($"[NetworkRoomService] 短码命中 {matchedCode} → {data.serverId}");
+        BeginClientJoin(ip, port);
+    }
+
+    /// <summary>在已发现缓存中按短码查找 serverId。</summary>
+    private bool TryFindDiscoveredServerIdByCode(string normalizedCode, out string serverId)
+    {
+        serverId = null;
+        foreach (RoomItemData room in _discoveredRooms.Values)
+        {
+            if (!RoomCodeUtil.TryNormalize(room.roomCode, out string code)) continue;
+            if (!string.Equals(code, normalizedCode, StringComparison.Ordinal)) continue;
+            serverId = room.serverId;
+            return !string.IsNullOrEmpty(serverId);
+        }
+        return false;
+    }
+
+    /// <summary>开始 Mirror StartClient（调用方已处理好状态门禁 / 满员检查）。</summary>
+    private void BeginClientJoin(string ip, int port)
+    {
+        _leaveRequested = false;
+        _pendingOp = RoomOp.Join;
+        SetConnectionState(RoomConnectionState.Connecting);
+
+        try
+        {
+            // Mirror NetworkManager.networkAddress 只接受主机名/IP；端口写入 Transport（PortTransport：KCP/Telepathy/SimpleWeb）。
+            networkManager.networkAddress = ip;
+            ApplyJoinTransportPort(port);
+            networkManager.StartClient();
+        }
+        catch (Exception e)
+        {
+            Debug.LogError($"[NetworkRoomService] 加入房间失败：{e.Message}");
+            _pendingOp = RoomOp.Unknown;
+            _pendingJoinRoomCode = null;
+            CurrentRoomCode = string.Empty;
+            SetConnectionState(RoomConnectionState.Failed);
+            RaiseError(RoomOp.Join, RoomErrorReason.ConnectionFailed, e.Message);
+            return;
+        }
+
+        if (_joinTimeoutCoroutine != null) StopCoroutine(_joinTimeoutCoroutine);
+        _joinTimeoutCoroutine = StartCoroutine(JoinTimeoutRoutine());
     }
 
     // ================================================================
