@@ -57,6 +57,12 @@ public interface IPlayerStateReadonly
     string PlayerName { get; }
     PlayerRole Role { get; }
 
+    /// <summary>
+    /// 本局得分（程序 1 权威）。Seeker：调查出人 / 击杀各计分；
+    /// Hider：Playing 中未 Captured 时按存活秒计分。练习大厅为 0。
+    /// </summary>
+    int Score { get; }
+
     // ---- 躲藏者专用 ----
     HiderState HiderState { get; }
     /// <summary>当前伪装的物品 ID（Disguised/Invisible 态有效，其余为 GameConstants.InvalidItemId）。</summary>

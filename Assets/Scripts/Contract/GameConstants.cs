@@ -97,6 +97,14 @@ public static class GameConstants
     public const float DefaultMusicVolume = 0.3f;
     public const float DefaultSFXVolume = 0.6f;
 
+    // ---- 得分（仅 Playing 阶段累计；练习大厅不计分）----
+    /// <summary>抓捕者：调查出一名躲藏者（变鬼魂）+ 分。</summary>
+    public const int SeekerScorePerInvestigate = 50;
+    /// <summary>抓捕者：击杀一名鬼魂（捕获）+ 分。</summary>
+    public const int SeekerScorePerKill = 50;
+    /// <summary>躲藏者：存活躲藏每满 1 秒 + 分（含 Ghost，Captured 后停止）。</summary>
+    public const int HiderScorePerSecond = 2;
+
     // ---- ID 约定（详见 接口契约.md「ID 约定」）----
     /// <summary>itemId 无效值。有效 itemId = 共享物品表（ItemTable，双方引用同一份资产）中的索引。</summary>
     public const int InvalidItemId = -1;

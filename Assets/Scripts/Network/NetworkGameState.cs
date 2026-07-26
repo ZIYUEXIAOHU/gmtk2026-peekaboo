@@ -71,6 +71,9 @@ public class NetworkGameState : NetworkBehaviour, IGameStateReadonly, IGameComma
 
     private double matchStartServerTime;
 
+    /// <summary>下一次给存活躲藏者发放「每秒分」的时刻（仅 Playing）。</summary>
+    private double nextHiderScoreTime;
+
     // ---- Wave 3：变身 / 心跳（仅服务端计时，Ended/Prep 不跑）----
     /// <summary>下一次全体变身时刻（NetworkTime.time）。SyncVar 供客户端算 NextTransformTimeLeft。</summary>
     [SyncVar]
@@ -156,6 +159,7 @@ public class NetworkGameState : NetworkBehaviour, IGameStateReadonly, IGameComma
         TickPhase();
         TickTransform();
         TickHeartbeat();
+        TickHiderSurvivalScore();
     }
 
     /// <summary>由 CustomNetworkManager 在 OnStartServer 调用：若尚无实例则从 Resources 生成并 Spawn。</summary>
@@ -625,6 +629,8 @@ public class NetworkGameState : NetworkBehaviour, IGameStateReadonly, IGameComma
         {
             hitPlayer.hiderState = HiderState.Ghost;
             // Ghost 持续到下次随机变身（TickTransform 会拉回 Invisible）。
+            if (phase == GamePhase.Playing)
+                seeker.score += GameConstants.SeekerScorePerInvestigate;
         }
 
         InvestigateInfo info = new InvestigateInfo
@@ -688,6 +694,8 @@ public class NetworkGameState : NetworkBehaviour, IGameStateReadonly, IGameComma
         if (hitGhost)
         {
             ghost.hiderState = HiderState.Captured;
+            if (phase == GamePhase.Playing)
+                seeker.score += GameConstants.SeekerScorePerKill;
             int alive = AliveHiders;
 
             // 2a) OnSlashed 全员
@@ -753,6 +761,7 @@ public class NetworkGameState : NetworkBehaviour, IGameStateReadonly, IGameComma
         ServerClearPlacedInvestigables();
         ActivateMatchMap();
         ScatterHiderSpawns();
+        ServerResetAllScores();
         foreach (RoomPlayer hider in GetAllRoomPlayers().Where(p => p.role == PlayerRole.Hider))
         {
             ServerFillHiderItemQueue(hider);
@@ -775,6 +784,8 @@ public class NetworkGameState : NetworkBehaviour, IGameStateReadonly, IGameComma
         invisibleRevealTime = 0;
         nextHeartbeatTime = NetworkTime.time;
         heartbeatBeatIndex = 0;
+        // 躲藏者存活分：满 1 秒后首次发放
+        nextHiderScoreTime = matchStartServerTime + 1.0;
         SetPhase(GamePhase.Playing, GameConstants.MatchDuration);
     }
 
@@ -812,6 +823,7 @@ public class NetworkGameState : NetworkBehaviour, IGameStateReadonly, IGameComma
         pendingInvisibleReveal = false;
         nextTransformTime = double.MaxValue;
         nextHeartbeatTime = double.MaxValue;
+        nextHiderScoreTime = double.MaxValue;
         pendingPrepAfterSceneChange = false;
         matchStartServerTime = 0;
         result = default;
@@ -855,6 +867,8 @@ public class NetworkGameState : NetworkBehaviour, IGameStateReadonly, IGameComma
             else
                 rp.isReady = true;
 
+            rp.score = 0;
+
             if (rp.role == PlayerRole.Hider)
             {
                 ServerFillHiderItemQueue(rp);
@@ -872,6 +886,40 @@ public class NetworkGameState : NetworkBehaviour, IGameStateReadonly, IGameComma
                 ? nm.GetLobbySpawnPosition(rp.role)
                 : FallbackLobbySpawn(rp.role);
             TeleportHider(rp, spawn);
+        }
+    }
+
+    [Server]
+    private void ServerResetAllScores()
+    {
+        List<RoomPlayer> all = GetAllRoomPlayers();
+        for (int i = 0; i < all.Count; i++)
+        {
+            if (all[i] != null)
+                all[i].score = 0;
+        }
+        nextHiderScoreTime = double.MaxValue;
+    }
+
+    /// <summary>Playing 中：未 Captured 的躲藏者每满 1 秒 + HiderScorePerSecond。</summary>
+    [Server]
+    private void TickHiderSurvivalScore()
+    {
+        if (phase != GamePhase.Playing) return;
+        if (nextHiderScoreTime >= double.MaxValue / 2) return;
+
+        while (NetworkTime.time >= nextHiderScoreTime)
+        {
+            List<RoomPlayer> all = GetAllRoomPlayers();
+            for (int i = 0; i < all.Count; i++)
+            {
+                RoomPlayer rp = all[i];
+                if (rp == null) continue;
+                if (rp.role != PlayerRole.Hider) continue;
+                if (rp.hiderState == HiderState.Captured) continue;
+                rp.score += GameConstants.HiderScorePerSecond;
+            }
+            nextHiderScoreTime += 1.0;
         }
     }
 

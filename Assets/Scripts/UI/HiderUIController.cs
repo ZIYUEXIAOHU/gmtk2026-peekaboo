@@ -10,7 +10,6 @@ public class HiderUIController : MonoBehaviour
     [Header("状态")]
     public TextMeshProUGUI hiderStateText;
     public TextMeshProUGUI transformTimer;
-    public Image disguiseStatusIcon;
     public TextMeshProUGUI placeHintText;
     
     [Header("物品栏")]
@@ -514,8 +513,6 @@ public class HiderUIController : MonoBehaviour
             hiderStateText.text = "CAPTURED - SPECTATING";
             hiderStateText.color = capturedColor;
         }
-        if (disguiseStatusIcon != null)
-            disguiseStatusIcon.color = capturedColor;
         
         aliveHiders.Clear();
         if (allPlayers != null)
@@ -616,7 +613,7 @@ public class HiderUIController : MonoBehaviour
     
     void UpdateHiderState(HiderState state)
     {
-        if (hiderStateText == null || disguiseStatusIcon == null) return;
+        if (hiderStateText == null) return;
         
         string stateText = "";
         Color stateColor = Color.white;
@@ -647,7 +644,6 @@ public class HiderUIController : MonoBehaviour
         
         hiderStateText.text = stateText;
         hiderStateText.color = stateColor;
-        disguiseStatusIcon.color = stateColor;
     }
     
     /// <summary>显示距下次变身剩余秒数（由 UpdateInvulnerableOrTransformTimer 从 State.NextTransformTimeLeft 驱动）。</summary>

@@ -1540,7 +1540,6 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   hiderStateText: {fileID: 1358552203}
   transformTimer: {fileID: 443114802}
-  disguiseStatusIcon: {fileID: 1507704432}
   placeHintText: {fileID: 285888446}
   inventoryParent: {fileID: 1065032409}
   itemSlotPrefab: {fileID: 9140736687435393954, guid: 68e2cb027b33d894a89fb23549f9e81f, type: 3}
@@ -2462,7 +2461,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!224 &172121149
 RectTransform:
   m_ObjectHideFlags: 0
@@ -14850,9 +14849,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   seekerStateText: {fileID: 1500835359}
-  disguiseStatusIcon: {fileID: 172121150}
   caughtCountText: {fileID: 2067295812}
-  heartbeatIndicator: {fileID: 0}
   seekerColor: {r: 0.9, g: 0.3, b: 0.2, a: 1}
 --- !u!1 &1170461645
 GameObject:
@@ -19047,7 +19044,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!224 &1507704431
 RectTransform:
   m_ObjectHideFlags: 0
