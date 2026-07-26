@@ -4,7 +4,7 @@ using System.Collections.Generic;
 public class SeekerRangeIndicator : MonoBehaviour
 {
     [Header("范围设置")]
-    public float detectRadius = 3f;
+    public float detectRadius = 5f;
     public LayerMask targetLayer;
     
     [Header("发光效果")]
@@ -23,17 +23,18 @@ public class SeekerRangeIndicator : MonoBehaviour
     
     private bool isPlayerDetected = false;
     private Collider2D[] detectedTargets = new Collider2D[20];
+    private Vector3 baseScale = Vector3.one;
     
     void Start()
     {
-        if (indicatorSprite == null)
-            indicatorSprite = GetComponent<SpriteRenderer>();
-        
         if (detectCenter == null)
             detectCenter = transform;
         
         if (indicatorSprite != null)
+        {
+            baseScale = indicatorSprite.transform.localScale;
             indicatorSprite.color = normalColor;
+        }
     }
     
     void Update()
@@ -107,12 +108,12 @@ public class SeekerRangeIndicator : MonoBehaviour
             Color targetColor = activeColor;
             targetColor.a = activeColor.a * pulse;
             indicatorSprite.color = targetColor;
-            indicatorSprite.transform.localScale = Vector3.one * (1f + pulse * 0.05f);
+            indicatorSprite.transform.localScale = baseScale * (1f + pulse * 0.05f);
         }
         else
         {
             indicatorSprite.color = normalColor;
-            indicatorSprite.transform.localScale = Vector3.one;
+            indicatorSprite.transform.localScale = baseScale;
         }
     }
     

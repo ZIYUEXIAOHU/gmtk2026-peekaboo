@@ -100,11 +100,16 @@ public class LobbyRoomController : MonoBehaviour
         else
             CalculateRoleSlots(Mathf.Max(1, GetSceneRoomPlayers().Length));
         
-        hiderBtn.onClick.AddListener(() => SelectRole(PlayerRole.Hider));
-        randomBtn.onClick.AddListener(SelectRandomRole);
-        seekerBtn.onClick.AddListener(() => SelectRole(PlayerRole.Seeker));
-        readyBtn.onClick.AddListener(ToggleReady);
-        startGameBtn.onClick.AddListener(HostStartGame);
+        if (hiderBtn != null)
+            hiderBtn.onClick.AddListener(() => SelectRole(PlayerRole.Hider));
+        if (randomBtn != null)
+            randomBtn.onClick.AddListener(SelectRandomRole);
+        if (seekerBtn != null)
+            seekerBtn.onClick.AddListener(() => SelectRole(PlayerRole.Seeker));
+        if (readyBtn != null)
+            readyBtn.onClick.AddListener(ToggleReady);
+        if (startGameBtn != null)
+            startGameBtn.onClick.AddListener(HostStartGame);
         
         if (reselectBtn != null)
         {
