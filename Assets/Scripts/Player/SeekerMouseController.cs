@@ -105,7 +105,7 @@ public class SeekerMouseController : NetworkBehaviour
         if (Time.time - lastAttackTime < attackCooldown) return;
 
         SeekerController seeker = GetComponentInParent<SeekerController>();
-        if (seeker != null && seeker.IsAttackMoveLocked)
+        if (seeker != null && seeker.IsMoveLocked)
             return;
         
         Vector3 mousePos = Camera.main.ScreenToWorldPoint(Input.mousePosition);

@@ -19,14 +19,21 @@ public static class GameConstants
 
     // ---- 抓捕者心跳（数值可调，但只在此处改）----
     public const float HeartbeatInterval = 1.0f;  // 节奏间隔
-    public const float HeartbeatRadius = 2.0f;    // 影响半径
+    /// <summary>心跳跳动半径。须与 InvestigateRange 一致：探测圈内物品/伪装躲藏者一起跳。</summary>
+    public const float HeartbeatRadius = 5.0f;
 
     // ---- 交互范围（数值可调，但只在此处改）----
-    public const float InvestigateRange = 1.5f;   // F 调查的搜索/高亮范围
-    public const float SlashRange = 1.0f;         // 空格劈砍范围
+    /// <summary>探测圈 / F 调查范围（世界单位）。角色根节点约 3.5×4，过小会导致「贴脸也调查不到」。</summary>
+    public const float InvestigateRange = 5.0f;
+    public const float SlashRange = 2.0f;         // 空格劈砍范围
 
     // ---- 鬼魂 ----
     // 鬼魂恢复时机 = 下一次随机变化，无独立时长；此处不定义恢复时间
+
+    // ---- 物品显示尺度（略小于 RoomPlayer 根节点 3.5×4，伪装/放置物共用）----
+    public const float ItemScaleX = 3.0f;
+    public const float ItemScaleY = 3.4f;
+    public const float ItemScaleZ = 3.0f;
 
     // ---- ID 约定（详见 接口契约.md「ID 约定」）----
     /// <summary>itemId 无效值。有效 itemId = 共享物品表（ItemTable，双方引用同一份资产）中的索引。</summary>

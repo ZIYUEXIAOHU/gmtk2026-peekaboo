@@ -883,6 +883,7 @@ public class NetworkGameState : NetworkBehaviour, IGameStateReadonly, IGameComma
                 {
                     seekerNetId = seeker.netId,
                     center = seeker.transform.position,
+                    // 跳动范围与探测圈一致（HeartbeatRadius 须等于 InvestigateRange）
                     radius = GameConstants.HeartbeatRadius,
                     beatIndex = heartbeatBeatIndex,
                     serverTime = serverTime,

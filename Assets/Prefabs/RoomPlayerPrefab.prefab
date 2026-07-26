@@ -376,7 +376,7 @@ GameObject:
   - component: {fileID: 710011001100110011}
   - component: {fileID: 720022002200220022}
   - component: {fileID: 730033003300330033}
-  m_Layer: 0
+  m_Layer: 6
   m_Name: RoomPlayerPrefab
   m_TagString: Untagged
   m_Icon: {fileID: 0}

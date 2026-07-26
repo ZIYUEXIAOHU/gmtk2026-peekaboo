@@ -64,6 +64,7 @@ public class RoomPlayer : NetworkBehaviour, IPlayerStateReadonly
         CacheVisuals();
         ApplyRoleVisuals(role);
         ApplyRoleControllers(role);
+        CollisionLayers.ApplyPlayerRoleLayer(gameObject, role);
     }
 
     public override void OnStartServer()
@@ -72,6 +73,7 @@ public class RoomPlayer : NetworkBehaviour, IPlayerStateReadonly
         CacheVisuals();
         // 服务器 Spawn 前/后都需隐藏未选身份外观（Visual_Seeker 保持 Active）
         ApplyRoleVisuals(role);
+        CollisionLayers.ApplyPlayerRoleLayer(gameObject, role);
     }
 
     public override void OnStartLocalPlayer()
@@ -81,6 +83,7 @@ public class RoomPlayer : NetworkBehaviour, IPlayerStateReadonly
         CacheVisuals();
         ApplyRoleVisuals(role);
         ApplyRoleControllers(role);
+        CollisionLayers.ApplyPlayerRoleLayer(gameObject, role);
     }
 
     void Awake()
@@ -89,6 +92,7 @@ public class RoomPlayer : NetworkBehaviour, IPlayerStateReadonly
         // 尽早关掉外观，避免 Visual_Seeker 默认激活时闪一帧；
         // 但必须保持 Visual_Seeker 的 GameObject 激活，否则 NetworkAnimator 不会 Initialize，Spawn 会 OnSerialize NRE。
         ApplyRoleVisuals(role);
+        CollisionLayers.ApplyPlayerRoleLayer(gameObject, role);
     }
 
     void CacheControllers()
@@ -118,6 +122,7 @@ public class RoomPlayer : NetworkBehaviour, IPlayerStateReadonly
         Debug.Log($"玩家 {playerName} 身份: {oldRole} -> {newRole}");
         ApplyRoleVisuals(newRole);
         ApplyRoleControllers(newRole);
+        CollisionLayers.ApplyPlayerRoleLayer(gameObject, newRole);
     }
 
     /// <summary>

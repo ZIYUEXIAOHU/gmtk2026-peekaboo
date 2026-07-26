@@ -168,7 +168,11 @@ public static class ItemAssetGenerator
             sr.color = Color.white;
 
             var col = root.AddComponent<BoxCollider2D>();
-            col.isTrigger = true;
+            // 固体碰撞；运行时由 CollisionLayers / InvestigableObject 设为 HiderItem 层
+            col.isTrigger = false;
+            int itemLayer = LayerMask.NameToLayer(CollisionLayers.HiderItem);
+            if (itemLayer >= 0)
+                root.layer = itemLayer;
             if (sprite != null)
             {
                 Bounds b = sprite.bounds;

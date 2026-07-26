@@ -12,8 +12,8 @@ public class SeekerController : NetworkBehaviour
     public float speedMultiplier = 10f;  // 速度倍率，可在 Inspector 调整
     
     [Header("交互范围（使用契约常量）")]
-    public float investigateRange = GameConstants.InvestigateRange;  // 1.5
-    public float slashRange = GameConstants.SlashRange;  // 1.0
+    public float investigateRange = GameConstants.InvestigateRange;  // 5.0
+    public float slashRange = GameConstants.SlashRange;  // 2.0
     
     [Header("检测")]
     public float groundCheckRadius = 0.2f;
@@ -40,15 +40,28 @@ public class SeekerController : NetworkBehaviour
     private bool isLocalPlayerReady = false;
     private float facingDirection = 0f;
     private float attackMoveLockUntil;
+    /// <summary>变身波锁定结束时刻（NetworkTime.time）。</summary>
+    private double transformLockUntil;
+    private bool gameEventsSubscribed;
+    private IGameEvents boundEvents;
     
     void Start()
     {
         SetupController();
+        TrySubscribeGameEvents();
     }
 
     void OnEnable()
     {
         SetupController();
+        TrySubscribeGameEvents();
+    }
+
+    void OnDisable()
+    {
+        UnsubscribeGameEvents();
+        if (isLocalPlayerReady)
+            SeekerBlackoutOverlay.Ensure().Hide();
     }
 
     void SetupController()
@@ -137,21 +150,24 @@ public class SeekerController : NetworkBehaviour
     {
         if (!isLocalPlayerReady) return;
         if (!testMode && !isLocalPlayer) return;
+
+        TrySubscribeGameEvents();
+        UpdateTransformLockVisual();
         
-        // ===== 移动 (A/D)；攻击硬直期间不可移动 =====
-        if (IsAttackMoveLocked)
+        // ===== 移动 (A/D)；攻击硬直 / 变身波锁定期间不可移动 =====
+        if (IsMoveLocked)
             moveInput = 0f;
         else
             moveInput = Input.GetAxisRaw("Horizontal");
         
         // ===== 调查 (F) =====
-        if (Input.GetKeyDown(testInvestigateKey))
+        if (Input.GetKeyDown(testInvestigateKey) && !IsTransformLocked)
         {
             Investigate();
         }
         
         // ===== 劈砍 (空格) =====
-        if (Input.GetKeyDown(testSlashKey) && !IsAttackMoveLocked)
+        if (Input.GetKeyDown(testSlashKey) && !IsMoveLocked)
         {
             Slash();
         }
@@ -168,7 +184,7 @@ public class SeekerController : NetworkBehaviour
         
         // ===== 水平移动 =====
         Vector2 velocity = rb.velocity;
-        velocity.x = IsAttackMoveLocked ? 0f : moveInput * moveSpeed;
+        velocity.x = IsMoveLocked ? 0f : moveInput * moveSpeed;
         rb.velocity = velocity;
         
         // ===== 检测地面 =====
@@ -212,6 +228,83 @@ public class SeekerController : NetworkBehaviour
     }
 
     public bool IsAttackMoveLocked => Time.time < attackMoveLockUntil;
+
+    /// <summary>变身波锁定：用 NetworkTime.time 与 invulnerableUntil 比较，抵抗延迟。</summary>
+    public bool IsTransformLocked => NetworkTime.time < transformLockUntil;
+
+    public bool IsMoveLocked => IsAttackMoveLocked || IsTransformLocked;
+
+    void TrySubscribeGameEvents()
+    {
+        if (!isLocalPlayerReady) return;
+        if (!testMode && !isLocalPlayer) return;
+        if (!GameContract.IsBound || GameContract.Events == null) return;
+        if (gameEventsSubscribed && ReferenceEquals(boundEvents, GameContract.Events)) return;
+
+        UnsubscribeGameEvents();
+        boundEvents = GameContract.Events;
+        boundEvents.OnHiderTransformed += OnHiderTransformed;
+        boundEvents.OnCommandRejected += OnCommandRejected;
+        gameEventsSubscribed = true;
+    }
+
+    void UnsubscribeGameEvents()
+    {
+        if (!gameEventsSubscribed) return;
+        if (boundEvents != null)
+        {
+            boundEvents.OnHiderTransformed -= OnHiderTransformed;
+            boundEvents.OnCommandRejected -= OnCommandRejected;
+        }
+        else if (GameContract.IsBound && GameContract.Events != null)
+        {
+            GameContract.Events.OnHiderTransformed -= OnHiderTransformed;
+            GameContract.Events.OnCommandRejected -= OnCommandRejected;
+        }
+        boundEvents = null;
+        gameEventsSubscribed = false;
+    }
+
+    void OnCommandRejected(CommandRejected rejected)
+    {
+        if (rejected.command != GameCommandType.Investigate) return;
+        Debug.LogWarning($"⚠️ 调查被拒绝：{rejected.reason}");
+    }
+
+    void OnHiderTransformed(TransformInfo info)
+    {
+        if (!isLocalPlayerReady) return;
+        if (!testMode && !isLocalPlayer) return;
+
+        // 同一波每个躲藏者各发一条事件，取 max 幂等
+        if (info.invulnerableUntil > transformLockUntil)
+            transformLockUntil = info.invulnerableUntil;
+
+        UpdateTransformLockVisual();
+    }
+
+    void UpdateTransformLockVisual()
+    {
+        if (!isLocalPlayerReady) return;
+        if (!testMode && !isLocalPlayer) return;
+
+        var overlay = SeekerBlackoutOverlay.Ensure();
+        if (IsTransformLocked)
+        {
+            overlay.Show();
+            moveInput = 0f;
+            if (rb != null)
+            {
+                Vector2 velocity = rb.velocity;
+                velocity.x = 0f;
+                rb.velocity = velocity;
+            }
+        }
+        else
+        {
+            overlay.Hide();
+        }
+    }
 
     /// <summary>播放攻击动画并进入移动硬直。空格劈砍 / 鼠标攻击共用。</summary>
     public void BeginAttack()

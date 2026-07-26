@@ -20,6 +20,7 @@ public class HiderController : NetworkBehaviour
     
     private Rigidbody2D rb;
     private SpriteRenderer spriteRenderer;
+    private SpriteRenderer visualSpriteRenderer;
     private float moveInput;
     private bool isGrounded;
     private bool hasJumped = false;
@@ -41,6 +42,7 @@ public class HiderController : NetworkBehaviour
             rb = GetComponent<Rigidbody2D>();
         if (spriteRenderer == null)
             spriteRenderer = GetComponent<SpriteRenderer>();
+        CacheVisualSprite();
         
         if (rb != null)
         {
@@ -109,6 +111,22 @@ public class HiderController : NetworkBehaviour
         
         if (spriteRenderer != null)
             spriteRenderer.color = new Color(0.2f, 0.8f, 0.2f);
+    }
+
+    void CacheVisualSprite()
+    {
+        if (visualSpriteRenderer != null)
+            return;
+
+        RoomPlayer rp = GetComponent<RoomPlayer>();
+        if (rp != null && rp.visualHider != null)
+            visualSpriteRenderer = rp.visualHider.GetComponent<SpriteRenderer>();
+        if (visualSpriteRenderer == null)
+        {
+            Transform t = transform.Find("Visual_Hider");
+            if (t != null)
+                visualSpriteRenderer = t.GetComponent<SpriteRenderer>();
+        }
     }
     
     void Update()
@@ -226,12 +244,21 @@ public class HiderController : NetworkBehaviour
             {
                 GameObject go = new GameObject("GroundCheck");
                 go.transform.SetParent(transform);
-                go.transform.localPosition = new Vector3(0, -0.5f, 0);
+                BoxCollider2D col = GetComponent<BoxCollider2D>();
+                if (col != null)
+                {
+                    float bottom = col.offset.y - col.size.y * 0.5f;
+                    go.transform.localPosition = new Vector3(col.offset.x, bottom - 0.02f, 0f);
+                }
+                else
+                {
+                    go.transform.localPosition = new Vector3(0, -0.5f, 0);
+                }
                 groundCheckPoint = go.transform;
             }
         }
-        
-        groundCheckPoint.localPosition = new Vector3(0, -0.5f, 0);
+
+        // 不要每帧写死 GroundCheck 位置——变身后由 HiderDisguiseVisual 同步底边
         
         // ===== 用 Layer 检测 =====
         Collider2D[] hits = Physics2D.OverlapCircleAll(
@@ -258,10 +285,16 @@ public class HiderController : NetworkBehaviour
     
     void UpdateFacing()
     {
-        if (moveInput > 0)
-            transform.localScale = new Vector3(1, 1, 1);
-        else if (moveInput < 0)
-            transform.localScale = new Vector3(-1, 1, 1);
+        // 用 flipX 翻转外观，避免改根节点 localScale（NetworkTransform 不同步 scale，
+        // 且根节点 3.5×4 与物品 Prefab 尺度不一致时会把碰撞箱/外观拉歪）
+        CacheVisualSprite();
+        if (visualSpriteRenderer == null)
+            return;
+
+        if (moveInput > 0f)
+            visualSpriteRenderer.flipX = false;
+        else if (moveInput < 0f)
+            visualSpriteRenderer.flipX = true;
     }
     
     void PlaceItem()
