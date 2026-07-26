@@ -34,15 +34,29 @@ public class HiderController : NetworkBehaviour
     private float coyoteUntil;
     private float lastJumpTime = -999f;
     private bool coyoteConsumedGroundJump;
+    private bool eventsSubscribed;
+    private IGameEvents boundEvents;
     
     void Start()
     {
         SetupController();
+        TrySubscribeEvents();
     }
 
     void OnEnable()
     {
         SetupController();
+        TrySubscribeEvents();
+    }
+
+    void OnDisable()
+    {
+        UnsubscribeEvents();
+    }
+
+    void OnDestroy()
+    {
+        UnsubscribeEvents();
     }
 
     void SetupController()
@@ -141,6 +155,37 @@ public class HiderController : NetworkBehaviour
                 visualSpriteRenderer = t.GetComponent<SpriteRenderer>();
         }
     }
+
+    void TrySubscribeEvents()
+    {
+        if (eventsSubscribed) return;
+        if (!isLocalPlayerReady) return;
+        if (!testMode && !isLocalPlayer) return;
+        if (!GameContract.IsBound || GameContract.Events == null) return;
+
+        boundEvents = GameContract.Events;
+        boundEvents.OnHiderTransformed += OnHiderTransformed;
+        boundEvents.OnPlaceResult += OnPlaceResult;
+        eventsSubscribed = true;
+        Debug.Log("✅ HiderController 订阅事件成功");
+    }
+
+    void UnsubscribeEvents()
+    {
+        if (!eventsSubscribed) return;
+        if (boundEvents != null)
+        {
+            boundEvents.OnHiderTransformed -= OnHiderTransformed;
+            boundEvents.OnPlaceResult -= OnPlaceResult;
+        }
+        else if (GameContract.IsBound && GameContract.Events != null)
+        {
+            GameContract.Events.OnHiderTransformed -= OnHiderTransformed;
+            GameContract.Events.OnPlaceResult -= OnPlaceResult;
+        }
+        boundEvents = null;
+        eventsSubscribed = false;
+    }
     
     void Update()
     {
@@ -197,6 +242,12 @@ public class HiderController : NetworkBehaviour
         coyoteConsumedGroundJump = false;
 
         Debug.Log($"✅ 跳跃！剩余次数={jumpsRemaining}");
+
+        // ===== 播放跳跃音效（仅本地躲藏者） =====
+        if (GameContract.IsAudioBound)
+        {
+            GameContract.Audio.PlayPlaceLocal();
+        }
     }
     
     void DropDown()
@@ -367,6 +418,12 @@ public class HiderController : NetworkBehaviour
         
         Debug.Log("F 放置物品");
         
+        // ===== 播放放置声（仅本地躲藏者） =====
+        if (GameContract.IsAudioBound)
+        {
+            GameContract.Audio.PlayPlaceLocal();
+        }
+        
         if (GameContract.IsBound)
         {
             GameContract.Commands.PlaceItem();
@@ -374,6 +431,43 @@ public class HiderController : NetworkBehaviour
         else
         {
             Debug.Log("⚠️ 契约未绑定，模拟放置");
+        }
+    }
+
+    // ===== 契约事件回调 =====
+
+    void OnHiderTransformed(TransformInfo info)
+    {
+        // 只处理本地玩家
+        if (!isLocalPlayer) return;
+        if (!testMode && !isLocalPlayer) return;
+
+        // ===== 布谷鸟钟声（全玩家） =====
+        if (GameContract.IsAudioBound)
+        {
+            GameContract.Audio.PlayCuckoo(transform.position);
+        }
+
+        // ===== 沉闷"变"声（仅本地躲藏者） =====
+        if (GameContract.IsAudioBound)
+        {
+            GameContract.Audio.PlayTransformLocal();
+        }
+
+        Debug.Log($"🔄 躲藏者变换: NetId={info.hiderNetId}, ItemId={info.newItemId}");
+    }
+
+    void OnPlaceResult(PlaceItemResult result)
+    {
+        if (!isLocalPlayer) return;
+
+        if (result.success)
+        {
+            Debug.Log($"✅ 放置成功: ItemId={result.itemId}, Position={result.position}");
+        }
+        else
+        {
+            Debug.Log($"⚠️ 放置失败: {result.failReason}");
         }
     }
     

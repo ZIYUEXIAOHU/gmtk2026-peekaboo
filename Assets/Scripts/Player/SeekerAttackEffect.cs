@@ -40,6 +40,12 @@ public static class SeekerAttackEffect
         Vector3 localCenter = GetLogicalCenterLocal(frames[pivotFrameIndex], Frame4LogicalCenterNormalized);
         go.transform.position = new Vector3(worldPosition.x, worldPosition.y, 0f)
             - Vector3.Scale(localCenter, go.transform.localScale);
+
+        // ===== 播放挥刀声（全玩家可听见） =====
+        if (GameContract.IsAudioBound)
+        {
+            GameContract.Audio.PlaySlash(worldPosition);
+        }
     }
 
     /// <summary>把归一化逻辑中心转成本地坐标（相对 Sprite pivot）。</summary>

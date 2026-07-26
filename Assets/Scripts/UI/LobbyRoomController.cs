@@ -372,6 +372,12 @@ public class LobbyRoomController : MonoBehaviour
 
         UpdateButtonVisibility();
         RefreshRoomCodeDisplay();
+
+        // ===== 切换到菜单背景音乐 =====
+        if (SoundManager.Instance != null)
+        {
+            SoundManager.Instance.SwitchToMusic(SoundManager.Instance.globalMusic);
+        }
     }
 
     void SyncRoleFromPreferredOrPlayer()
@@ -476,6 +482,12 @@ public class LobbyRoomController : MonoBehaviour
         hasSelectedRole = role != PlayerRole.None;
         UpdateRoleUI(role);
         gameStarted = true;
+
+        // ===== 切换到游戏背景音乐 =====
+        if (SoundManager.Instance != null)
+        {
+            SoundManager.Instance.SwitchToMusic(SoundManager.Instance.gameMusic);
+        }
     }
 
     PlayerRole ResolveLocalRole()

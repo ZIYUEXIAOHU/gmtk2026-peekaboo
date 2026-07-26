@@ -350,6 +350,12 @@ public class SeekerController : NetworkBehaviour
         SlashVfxPresenter.Ensure();
         SeekerAttackEffect.Spawn(mouseWorld);
 
+        // ===== 播放挥刀声（全玩家） =====
+        if (GameContract.IsAudioBound)
+        {
+            GameContract.Audio.PlaySlash(mouseWorld);
+        }
+
         if (testMode)
         {
             Debug.Log($"🧪 [测试模式] 劈砍 effect={mouseWorld}");
@@ -387,6 +393,12 @@ public class SeekerController : NetworkBehaviour
 
         Vector2 mouseWorld = GetMouseWorldPosition();
         Debug.Log($"🔍 F 调查 mouse={mouseWorld}");
+        
+        // ===== 播放翻找声（全玩家） =====
+        if (GameContract.IsAudioBound)
+        {
+            GameContract.Audio.PlaySearch(mouseWorld);
+        }
         
         if (GameContract.IsBound)
         {
