@@ -11,7 +11,7 @@ using UnityEngine;
 public class RoomPlayer : NetworkBehaviour, IPlayerStateReadonly
 {
     [SyncVar(hook = nameof(OnPlayerNameChanged))]
-    public string playerName = "玩家";
+    public string playerName = GameConstants.DefaultPlayerName;
 
     [SyncVar(hook = nameof(OnReadyChanged))]
     public bool isReady = false;
@@ -88,6 +88,7 @@ public class RoomPlayer : NetworkBehaviour, IPlayerStateReadonly
         ApplyRoleVisuals(role);
         ApplyRoleControllers(role);
         CollisionLayers.ApplyPlayerRoleLayer(gameObject, role);
+        ApplyPreferredNameFromPrefs();
     }
 
     void Awake()
@@ -97,6 +98,32 @@ public class RoomPlayer : NetworkBehaviour, IPlayerStateReadonly
         // 但必须保持 Visual_Seeker 的 GameObject 激活，否则 NetworkAnimator 不会 Initialize，Spawn 会 OnSerialize NRE。
         ApplyRoleVisuals(role);
         CollisionLayers.ApplyPlayerRoleLayer(gameObject, role);
+    }
+
+    void ApplyPreferredNameFromPrefs()
+    {
+        string preferred = PlayerPrefs.GetString(GameConstants.PlayerNamePrefsKey, string.Empty);
+        if (string.IsNullOrWhiteSpace(preferred))
+            return;
+
+        string sanitized = SanitizePlayerName(preferred);
+        if (sanitized == playerName)
+            return;
+
+        CmdSetPlayerName(sanitized);
+    }
+
+    /// <summary>展示名校验：Trim，空回落默认名，截断最大长度。</summary>
+    public static string SanitizePlayerName(string raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+            return GameConstants.DefaultPlayerName;
+
+        string trimmed = raw.Trim();
+        if (trimmed.Length > GameConstants.MaxPlayerNameLength)
+            trimmed = trimmed.Substring(0, GameConstants.MaxPlayerNameLength);
+
+        return string.IsNullOrEmpty(trimmed) ? GameConstants.DefaultPlayerName : trimmed;
     }
 
     void CacheControllers()
@@ -193,6 +220,10 @@ public class RoomPlayer : NetworkBehaviour, IPlayerStateReadonly
     void OnPlayerNameChanged(string oldVal, string newVal)
     {
         Debug.Log($"玩家名称变更: {oldVal} -> {newVal}");
+
+        LobbyRoomController lobby = FindObjectOfType<LobbyRoomController>();
+        if (lobby != null)
+            lobby.UpdatePlayerList();
     }
 
     void OnReadyChanged(bool oldVal, bool newVal)
@@ -202,6 +233,17 @@ public class RoomPlayer : NetworkBehaviour, IPlayerStateReadonly
         LobbyRoomController lobby = FindObjectOfType<LobbyRoomController>();
         if (lobby != null)
             lobby.NotifyPlayerReadyChanged(this);
+    }
+
+    [Command]
+    public void CmdSetPlayerName(string newName)
+    {
+        string sanitized = SanitizePlayerName(newName);
+        playerName = sanitized;
+
+        CustomNetworkManager nm = FindObjectOfType<CustomNetworkManager>();
+        if (nm != null)
+            nm.playerNames[connectionId] = sanitized;
     }
 
     [Command]

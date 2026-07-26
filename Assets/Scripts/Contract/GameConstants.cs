@@ -41,6 +41,11 @@ public static class GameConstants
     public const float ItemScaleY = 3.4f;
     public const float ItemScaleZ = 3.0f;
 
+    // ---- 展示名（仅 UI，不参与程序身份区分）----
+    public const string DefaultPlayerName = "Shui";
+    public const int MaxPlayerNameLength = 16;
+    public const string PlayerNamePrefsKey = "PlayerName";
+
     // ---- ID 约定（详见 接口契约.md「ID 约定」）----
     /// <summary>itemId 无效值。有效 itemId = 共享物品表（ItemTable，双方引用同一份资产）中的索引。</summary>
     public const int InvalidItemId = -1;
