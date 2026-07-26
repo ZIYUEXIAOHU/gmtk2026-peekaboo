@@ -1,5 +1,6 @@
 using Mirror;
 using UnityEngine;
+using UnityEngine.Serialization;
 
 public class StairController : MonoBehaviour
 {
@@ -15,8 +16,9 @@ public class StairController : MonoBehaviour
     public Collider2D upperTrigger;
 
     [Header("放置物推送")]
-    [Tooltip("楼梯井区内放置物被推向中心的水平速度；≤0 使用 GameConstants。")]
-    public float itemCenterPushSpeed = -1f;
+    [Tooltip("楼梯井区内放置物被推向水平中心的力；≤0 使用 GameConstants。")]
+    [FormerlySerializedAs("itemCenterPushSpeed")]
+    public float itemCenterPushForce = -1f;
     [Tooltip("额外放大 lossyScale 作为推送检测区（宽/高）。")]
     public Vector2 itemForceZonePadding = new Vector2(0.4f, 0.2f);
     
@@ -93,6 +95,10 @@ public class StairController : MonoBehaviour
             }
         }
         
+        // Prep：本地抓捕者不可上下楼
+        if (IsLocalSeekerInPrep())
+            return;
+
         // ===== 下传上 =====
         if (playerInside && Input.GetKeyDown(interactKey))
         {
@@ -104,6 +110,15 @@ public class StairController : MonoBehaviour
         {
             TeleportDown();
         }
+    }
+
+    /// <summary>Prep 阶段本地 Seeker 被锁定，不可用楼梯。</summary>
+    static bool IsLocalSeekerInPrep()
+    {
+        if (!GameContract.IsBound || GameContract.State == null) return false;
+        if (GameContract.State.Phase != GamePhase.Prep) return false;
+        IPlayerStateReadonly local = GameContract.State.LocalPlayer;
+        return local != null && local.Role == PlayerRole.Seeker;
     }
     
     static bool IsPlayerBody(Collider2D col)
@@ -230,14 +245,14 @@ public class StairController : MonoBehaviour
     }
     
     /// <summary>
-    /// 楼梯井范围内的放置物获得指向楼梯中心（X）的水平速度，便于落入通道。
+    /// 楼梯井范围内的放置物受到指向水平中心（X）的水平力，便于落入通道。
     /// </summary>
     void PushItemsTowardCenter()
     {
-        float pushSpeed = itemCenterPushSpeed > 0f
-            ? itemCenterPushSpeed
-            : GameConstants.StairItemCenterPushSpeed;
-        if (pushSpeed <= 0f)
+        float pushForce = itemCenterPushForce > 0f
+            ? itemCenterPushForce
+            : GameConstants.StairItemCenterPushForce;
+        if (pushForce <= 0f)
             return;
 
         Vector2 zoneSize = new Vector2(
@@ -273,15 +288,9 @@ public class StairController : MonoBehaviour
 
             float dx = centerX - itemRb.position.x;
             if (Mathf.Abs(dx) < 0.05f)
-            {
-                // 已接近中线：清掉水平速度，避免左右抖
-                Vector2 v = itemRb.velocity;
-                v.x = 0f;
-                itemRb.velocity = v;
                 continue;
-            }
 
-            itemRb.velocity = new Vector2(Mathf.Sign(dx) * pushSpeed, itemRb.velocity.y);
+            itemRb.AddForce(new Vector2(Mathf.Sign(dx) * pushForce, 0f), ForceMode2D.Force);
         }
     }
 

@@ -10,7 +10,6 @@ public class HiderUIController : MonoBehaviour
     [Header("状态")]
     public TextMeshProUGUI hiderStateText;
     public TextMeshProUGUI transformTimer;
-    public Image disguiseStatusIcon;
     public TextMeshProUGUI placeHintText;
     
     [Header("物品栏")]
@@ -191,7 +190,7 @@ public class HiderUIController : MonoBehaviour
             float invulnLeft = (float)(localInvulnerableUntil - NetworkTime.time);
             if (invulnLeft > 0f)
             {
-                transformTimer.text = $"⏳ Invincible: {Mathf.CeilToInt(invulnLeft)}s";
+                transformTimer.text = $"Invincible: {Mathf.CeilToInt(invulnLeft)}s";
                 transformTimer.color = invisibleColor;
                 transformTimer.gameObject.SetActive(true);
                 return;
@@ -511,11 +510,9 @@ public class HiderUIController : MonoBehaviour
         
         if (hiderStateText != null)
         {
-            hiderStateText.text = "⚫ CAPTURED - SPECTATING";
+            hiderStateText.text = "CAPTURED - SPECTATING";
             hiderStateText.color = capturedColor;
         }
-        if (disguiseStatusIcon != null)
-            disguiseStatusIcon.color = capturedColor;
         
         aliveHiders.Clear();
         if (allPlayers != null)
@@ -586,7 +583,7 @@ public class HiderUIController : MonoBehaviour
         if (observerStatusText != null)
         {
             bool isAlive = (target.HiderState != HiderState.Captured);
-            observerStatusText.text = isAlive ? "🟢 ALIVE" : "🔴 CAPTURED";
+            observerStatusText.text = isAlive ? "ALIVE" : "CAPTURED";
             observerStatusText.color = isAlive ? new Color(0.2f, 0.8f, 0.2f) : Color.red;
         }
         
@@ -616,7 +613,7 @@ public class HiderUIController : MonoBehaviour
     
     void UpdateHiderState(HiderState state)
     {
-        if (hiderStateText == null || disguiseStatusIcon == null) return;
+        if (hiderStateText == null) return;
         
         string stateText = "";
         Color stateColor = Color.white;
@@ -624,30 +621,29 @@ public class HiderUIController : MonoBehaviour
         switch (state)
         {
             case HiderState.Disguised:
-                stateText = "🟢 Disguised";
+                stateText = "Disguised";
                 stateColor = disguisedColor;
                 break;
             case HiderState.Invisible:
-                stateText = "🟡 Invisible";
+                stateText = "Invisible";
                 stateColor = invisibleColor;
                 break;
             case HiderState.Ghost:
-                stateText = "🔴 Ghost";
+                stateText = "Ghost";
                 stateColor = ghostColor;
                 break;
             case HiderState.Captured:
-                stateText = "⚫ CAPTURED - SPECTATING";
+                stateText = "CAPTURED - SPECTATING";
                 stateColor = capturedColor;
                 break;
             default:
-                stateText = "🟢 Disguised";
+                stateText = "Disguised";
                 stateColor = disguisedColor;
                 break;
         }
         
         hiderStateText.text = stateText;
         hiderStateText.color = stateColor;
-        disguiseStatusIcon.color = stateColor;
     }
     
     /// <summary>显示距下次变身剩余秒数（由 UpdateInvulnerableOrTransformTimer 从 State.NextTransformTimeLeft 驱动）。</summary>
@@ -663,13 +659,13 @@ public class HiderUIController : MonoBehaviour
         
         if (timeLeft > 0)
         {
-            transformTimer.text = $"⏳ Transform: {Mathf.CeilToInt(timeLeft)}s";
+            transformTimer.text = $"Transform: {Mathf.CeilToInt(timeLeft)}s";
             transformTimer.color = Color.white;
             transformTimer.gameObject.SetActive(true);
         }
         else
         {
-            transformTimer.text = "⏳ Ready to transform...";
+            transformTimer.text = "Ready to transform...";
             transformTimer.color = Color.yellow;
             transformTimer.gameObject.SetActive(true);
         }
@@ -686,10 +682,9 @@ public class HiderUIController : MonoBehaviour
 
         // 获取本地位置
         Vector2 localPos = transform.position;
-        float distance = Vector2.Distance(pulse.center, localPos);
 
-        // 如果在心跳范围内，播放心跳声
-        if (distance <= pulse.radius)
+        // 如果在心跳椭圆内，播放心跳声
+        if (GameConstants.IsInHeartbeatRange(pulse.center, localPos))
         {
             GameContract.Audio.PlayHeartbeat();
         }

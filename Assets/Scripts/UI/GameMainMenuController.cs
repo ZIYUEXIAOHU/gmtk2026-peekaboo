@@ -214,39 +214,62 @@ public class GameMainMenuController : MonoBehaviour
         #endif
     }
     
-    // ==================== 音量控制 ====================
+    // ==================== 音量控制（玩家档案） ====================
     void LoadSettings()
     {
-        float master = PlayerPrefs.GetFloat("MasterVolume", 0.8f);
-        float music = PlayerPrefs.GetFloat("MusicVolume", 0.8f);
-        float sfx = PlayerPrefs.GetFloat("SFXVolume", 0.8f);
-        
+        float master = PlayerProfile.MasterVolume;
+        float music = PlayerProfile.MusicVolume;
+        float sfx = PlayerProfile.SFXVolume;
+
         if (masterVolumeSlider != null) masterVolumeSlider.value = master;
         if (musicVolumeSlider != null) musicVolumeSlider.value = music;
         if (sfxVolumeSlider != null) sfxVolumeSlider.value = sfx;
-        
-        AudioListener.volume = master;
+
+        if (GameContract.IsAudioBound)
+        {
+            GameContract.Audio.SetMasterVolume(master);
+            GameContract.Audio.SetMusicVolume(music);
+            GameContract.Audio.SetSFXVolume(sfx);
+        }
+        else
+        {
+            AudioListener.volume = master;
+        }
     }
-    
+
     void OnMasterVolumeChanged(float value)
     {
         if (masterVolumeText != null)
             masterVolumeText.text = Mathf.RoundToInt(value * 100) + "%";
-        AudioListener.volume = value;
-        PlayerPrefs.SetFloat("MasterVolume", value);
+
+        if (GameContract.IsAudioBound)
+            GameContract.Audio.SetMasterVolume(value);
+        else
+        {
+            AudioListener.volume = value;
+            PlayerProfile.SetMasterVolume(value);
+        }
     }
-    
+
     void OnMusicVolumeChanged(float value)
     {
         if (musicVolumeText != null)
             musicVolumeText.text = Mathf.RoundToInt(value * 100) + "%";
-        PlayerPrefs.SetFloat("MusicVolume", value);
+
+        if (GameContract.IsAudioBound)
+            GameContract.Audio.SetMusicVolume(value);
+        else
+            PlayerProfile.SetMusicVolume(value);
     }
-    
+
     void OnSFXVolumeChanged(float value)
     {
         if (sfxVolumeText != null)
             sfxVolumeText.text = Mathf.RoundToInt(value * 100) + "%";
-        PlayerPrefs.SetFloat("SFXVolume", value);
+
+        if (GameContract.IsAudioBound)
+            GameContract.Audio.SetSFXVolume(value);
+        else
+            PlayerProfile.SetSFXVolume(value);
     }
 }

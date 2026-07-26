@@ -251,10 +251,10 @@ public class GameManager : NetworkBehaviour, IGameStateReadonly
     {
         string stateName = newVal switch
         {
-            GamePhase.Prep => "⏳ Hiding...",
-            GamePhase.Playing => "🔍 Seeking...",
-            GamePhase.Ended => "🏁 Game Over!",
-            _ => "⏳ Waiting to start"
+            GamePhase.Prep => "Hiding...",
+            GamePhase.Playing => "Seeking...",
+            GamePhase.Ended => "Game Over!",
+            _ => "Waiting to start"
         };
         if (statusText != null) statusText.text = stateName;
     }

@@ -35,6 +35,10 @@ public class RoomPlayer : NetworkBehaviour, IPlayerStateReadonly
     [SyncVar]
     public bool isRoomHost = false;
 
+    /// <summary>本局得分（程序 1 权威写入；UI 只读 Score）。</summary>
+    [SyncVar]
+    public int score = 0;
+
     /// <summary>物品栏剩余队列，按顺序放置。
     /// 由 NetworkGameState 在选 Hider / 进入 Prep 时填充，PlaceItem 时弹出队首。</summary>
     public readonly SyncList<int> itemQueue = new SyncList<int>();
@@ -51,6 +55,7 @@ public class RoomPlayer : NetworkBehaviour, IPlayerStateReadonly
     public uint NetId => netId;
     public string PlayerName => playerName;
     public PlayerRole Role => role;
+    public int Score => score;
     public HiderState HiderState => hiderState;
     public int DisguiseItemId => disguiseItemId;
     public IReadOnlyList<int> ItemQueue => itemQueue;
@@ -102,15 +107,11 @@ public class RoomPlayer : NetworkBehaviour, IPlayerStateReadonly
 
     void ApplyPreferredNameFromPrefs()
     {
-        string preferred = PlayerPrefs.GetString(GameConstants.PlayerNamePrefsKey, string.Empty);
-        if (string.IsNullOrWhiteSpace(preferred))
+        string preferred = PlayerProfile.PlayerName;
+        if (string.IsNullOrWhiteSpace(preferred) || preferred == playerName)
             return;
 
-        string sanitized = SanitizePlayerName(preferred);
-        if (sanitized == playerName)
-            return;
-
-        CmdSetPlayerName(sanitized);
+        CmdSetPlayerName(preferred);
     }
 
     /// <summary>展示名校验：Trim，空回落默认名，截断最大长度。</summary>

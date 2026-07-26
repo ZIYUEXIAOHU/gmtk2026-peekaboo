@@ -335,9 +335,9 @@ public class PlayerListUIController : MonoBehaviour
     {
         switch (role)
         {
-            case PlayerRole.Hider: return "🟢 Hider";
-            case PlayerRole.Seeker: return "🔴 Hunter";
-            default: return "❓ None";
+            case PlayerRole.Hider: return "Hider";
+            case PlayerRole.Seeker: return "Hunter";
+            default: return "None";
         }
     }
 

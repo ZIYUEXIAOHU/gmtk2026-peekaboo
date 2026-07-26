@@ -1,5 +1,4 @@
 using UnityEngine;
-using UnityEngine.UI;
 using TMPro;
 using System.Collections;
 
@@ -7,9 +6,7 @@ public class SeekerUIController : MonoBehaviour
 {
     [Header("状态")]
     public TextMeshProUGUI seekerStateText;    // 状态文字
-    public Image disguiseStatusIcon;            // 状态图标
     public TextMeshProUGUI caughtCountText;    // 捕获计数
-    public Image heartbeatIndicator;           // 心跳指示器
     
     [Header("颜色")]
     public Color seekerColor = new Color(0.9f, 0.3f, 0.2f);
@@ -119,19 +116,19 @@ public class SeekerUIController : MonoBehaviour
             switch (phase)
             {
                 case GamePhase.Waiting:
-                    stateText = "⏳ WAITING...";
+                    stateText = "WAITING...";
                     break;
                 case GamePhase.Prep:
-                    stateText = "⏳ PREP PHASE";
+                    stateText = "PREP PHASE";
                     break;
                 case GamePhase.Playing:
-                    stateText = "🔴 SEEKING...";
+                    stateText = "SEEKING...";
                     break;
                 case GamePhase.Ended:
-                    stateText = "🏁 GAME OVER";
+                    stateText = "GAME OVER";
                     break;
                 default:
-                    stateText = "🔴 SEEKER";
+                    stateText = "SEEKER";
                     break;
             }
             seekerStateText.text = stateText;
@@ -142,18 +139,6 @@ public class SeekerUIController : MonoBehaviour
         if (caughtCountText != null)
         {
             caughtCountText.text = $"CAPTURED: {capturedCount}/{totalHiders}";
-        }
-        
-        // ===== 更新状态图标 =====
-        if (disguiseStatusIcon != null)
-        {
-            disguiseStatusIcon.color = seekerColor;
-        }
-        
-        // ===== 心跳指示器 =====
-        if (heartbeatIndicator != null)
-        {
-            heartbeatIndicator.gameObject.SetActive(phase == GamePhase.Playing);
         }
     }
 
@@ -215,8 +200,8 @@ public class SeekerUIController : MonoBehaviour
         if (seekerStateText != null)
         {
             string resultText = result.result == GameResult.HidersWin 
-                ? "❌ HIDERS WIN!" 
-                : "✅ SEEKERS WIN!";
+                ? "HIDERS WIN!" 
+                : "SEEKERS WIN!";
             seekerStateText.text = resultText;
         }
         Debug.Log($"🏁 游戏结束: {result.result}");
