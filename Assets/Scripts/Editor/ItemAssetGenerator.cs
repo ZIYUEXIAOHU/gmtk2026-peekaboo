@@ -33,16 +33,42 @@ public static class ItemAssetGenerator
 
     static readonly ItemDef[] Items =
     {
+        // Large
+        new ItemDef { relativePath = "Large/L-BigTable.png", displayName = "Big Table", ppu = PpuLarge, size = ItemSize.Large },
+        new ItemDef { relativePath = "Large/L-Blue-Bed.png", displayName = "Blue Bed", ppu = PpuLarge, size = ItemSize.Large },
         new ItemDef { relativePath = "Large/L-CoffeeTable.png", displayName = "Coffee Table", ppu = PpuLarge, size = ItemSize.Large },
+        new ItemDef { relativePath = "Large/L-GiantRabbit.png", displayName = "Giant Rabbit", ppu = PpuLarge, size = ItemSize.Large },
+        new ItemDef { relativePath = "Large/L-Green-Shelf.png", displayName = "Green Shelf", ppu = PpuLarge, size = ItemSize.Large },
+        new ItemDef { relativePath = "Large/L-Green-WhiteTable.png", displayName = "Green White Table", ppu = PpuLarge, size = ItemSize.Large },
+        new ItemDef { relativePath = "Large/L-IVStand.png", displayName = "IV Stand", ppu = PpuLarge, size = ItemSize.Large },
+        new ItemDef { relativePath = "Large/L-Pink-Chair.png", displayName = "Pink Chair", ppu = PpuLarge, size = ItemSize.Large },
+        new ItemDef { relativePath = "Large/L-Pink-Desk.png", displayName = "Pink Desk", ppu = PpuLarge, size = ItemSize.Large },
         new ItemDef { relativePath = "Large/L-RockingHorse.png", displayName = "Rocking Horse", ppu = PpuLarge, size = ItemSize.Large },
         new ItemDef { relativePath = "Large/L-StandLamp.png", displayName = "Floor Lamp", ppu = PpuLarge, size = ItemSize.Large },
+        new ItemDef { relativePath = "Large/L-Yellow-Sofa.png", displayName = "Yellow Sofa", ppu = PpuLarge, size = ItemSize.Large },
+        new ItemDef { relativePath = "Large/L-YellowPoll.png", displayName = "Yellow Pole", ppu = PpuLarge, size = ItemSize.Large },
+        // Middle
+        new ItemDef { relativePath = "Middle/M-basket.png", displayName = "Basket", ppu = PpuMiddle, size = ItemSize.Middle },
+        new ItemDef { relativePath = "Middle/M-Box.png", displayName = "Box", ppu = PpuMiddle, size = ItemSize.Middle },
+        new ItemDef { relativePath = "Middle/M-Cage.png", displayName = "Cage", ppu = PpuMiddle, size = ItemSize.Middle },
+        new ItemDef { relativePath = "Middle/M-Candle.png", displayName = "Candle", ppu = PpuMiddle, size = ItemSize.Middle },
         new ItemDef { relativePath = "Middle/M-Lamp.png", displayName = "Desk Lamp", ppu = PpuMiddle, size = ItemSize.Middle },
+        new ItemDef { relativePath = "Middle/M-Mirror.png", displayName = "Mirror", ppu = PpuMiddle, size = ItemSize.Middle },
         new ItemDef { relativePath = "Middle/M-MusicBox.png", displayName = "Music Box", ppu = PpuMiddle, size = ItemSize.Middle },
+        new ItemDef { relativePath = "Middle/M-OldLamp.png", displayName = "Old Lamp", ppu = PpuMiddle, size = ItemSize.Middle },
+        new ItemDef { relativePath = "Middle/M-Phonograph.png", displayName = "Phonograph", ppu = PpuMiddle, size = ItemSize.Middle },
         new ItemDef { relativePath = "Middle/M-Rabbit.png", displayName = "Bunny Plush", ppu = PpuMiddle, size = ItemSize.Middle },
+        new ItemDef { relativePath = "Middle/M-RabbitBox.png", displayName = "Rabbit Box", ppu = PpuMiddle, size = ItemSize.Middle },
+        new ItemDef { relativePath = "Middle/M-ShortRabbit.png", displayName = "Short Rabbit", ppu = PpuMiddle, size = ItemSize.Middle },
         new ItemDef { relativePath = "Middle/M-SideTable.png", displayName = "Side Table", ppu = PpuMiddle, size = ItemSize.Middle },
         new ItemDef { relativePath = "Middle/M-Vase.png", displayName = "Vase", ppu = PpuMiddle, size = ItemSize.Middle },
+        new ItemDef { relativePath = "Middle/S-scale.png", displayName = "Scale", ppu = PpuMiddle, size = ItemSize.Middle },
+        // Small
+        new ItemDef { relativePath = "Small/S-Flower.png", displayName = "Flower", ppu = PpuSmall, size = ItemSize.Small },
+        new ItemDef { relativePath = "Small/S-Gaslight.png", displayName = "Gaslight", ppu = PpuSmall, size = ItemSize.Small },
         new ItemDef { relativePath = "Small/S-Medicine.png", displayName = "Medicine Bottle", ppu = PpuSmall, size = ItemSize.Small },
         new ItemDef { relativePath = "Small/S-MintRabbit.png", displayName = "Mint Bunny", ppu = PpuSmall, size = ItemSize.Small },
+        new ItemDef { relativePath = "Small/S-smallVase.png", displayName = "Small Vase", ppu = PpuSmall, size = ItemSize.Small },
         new ItemDef { relativePath = "Small/S-TeaCup.png", displayName = "Teacup", ppu = PpuSmall, size = ItemSize.Small },
     };
 
@@ -178,7 +204,9 @@ public static class ItemAssetGenerator
             if (sprite != null)
             {
                 Bounds b = sprite.bounds;
-                col.size = b.size;
+                col.size = new Vector2(
+                    b.size.x * GameConstants.ItemColliderScaleX,
+                    b.size.y * GameConstants.ItemColliderScaleY);
                 col.offset = b.center;
             }
             // Prefab 预览圆角；放置时 ConfigurePlacedItem 会再按世界尺度校准
@@ -198,12 +226,37 @@ public static class ItemAssetGenerator
             root.AddComponent<InvestigableObject>();
 
             GameObject prefab = PrefabUtility.SaveAsPrefabAsset(root, prefabPath);
+            // SaveAsPrefabAsset 不会触发 Mirror OnValidate 写盘；assetId=0 会导致客户端无法生成外观
+            AssignMirrorAssetId(prefab, prefabPath);
             return prefab;
         }
         finally
         {
             Object.DestroyImmediate(root);
         }
+    }
+
+    static void AssignMirrorAssetId(GameObject prefab, string prefabPath)
+    {
+        if (prefab == null) return;
+        NetworkIdentity identity = prefab.GetComponent<NetworkIdentity>();
+        if (identity == null) return;
+
+        string guidStr = AssetDatabase.AssetPathToGUID(prefabPath);
+        if (string.IsNullOrEmpty(guidStr)) return;
+
+        uint assetId = NetworkIdentity.AssetGuidToUint(new System.Guid(guidStr));
+        if (assetId == 0) return;
+
+        var so = new SerializedObject(identity);
+        SerializedProperty prop = so.FindProperty("_assetId");
+        if (prop == null) return;
+        if (prop.uintValue == assetId) return;
+
+        prop.uintValue = assetId;
+        so.ApplyModifiedPropertiesWithoutUndo();
+        EditorUtility.SetDirty(prefab);
+        PrefabUtility.SavePrefabAsset(prefab);
     }
 
     static void WriteItemTable(List<ItemTable.Entry> entries)

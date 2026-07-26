@@ -251,20 +251,21 @@ public class HiderDisguiseVisual : MonoBehaviour
         Vector2 size = defaultColliderSize;
         Vector2 offset = defaultColliderOffset;
 
-        // 物品 Prefab 碰撞箱（尺度 1）；换算到根节点本地，使世界尺寸 = Prefab × ItemScale
-        if (TryGetItemCollider(itemId, out Vector2 prefabSize, out Vector2 prefabOffset))
-        {
-            size = prefabSize;
-            offset = prefabOffset;
-        }
-        else if (sprite != null)
+        // 与放置物一致：按贴图 bounds 重建，再乘宽/高缩放（不用 Prefab 里已圆角的 size，避免叠乘）
+        if (sprite != null)
         {
             Bounds b = sprite.bounds;
             size = b.size;
             offset = b.center;
         }
+        else if (TryGetItemCollider(itemId, out Vector2 prefabSize, out Vector2 prefabOffset))
+        {
+            size = prefabSize;
+            offset = prefabOffset;
+        }
 
-        size *= colliderScale;
+        size.x *= colliderScale * GameConstants.ItemColliderScaleX;
+        size.y *= colliderScale * GameConstants.ItemColliderScaleY;
 
         Vector3 lossy = transform.lossyScale;
         float absX = ApproxAbs(lossy.x);

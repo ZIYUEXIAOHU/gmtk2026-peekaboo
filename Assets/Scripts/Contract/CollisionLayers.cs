@@ -123,8 +123,29 @@ public static class CollisionLayers
         // 碰撞范围交给 SetLayerCollisionMask；此处不再排除 Default（以免误伤未切层的 Hider）
         col.excludeLayers = 0;
         col.includeLayers = 0;
+
+        // 每次从贴图重建，避免重复 Configure 时叠乘；比 sprite 略大便于站立/推动
+        ApplyItemColliderFromSprite(go, col);
         ApplyColliderRounding(col);
         IgnoreColliderAgainstAllSeekers(col);
+    }
+
+    /// <summary>按 Sprite.bounds × ItemColliderScaleX/Y 写入碰撞箱（幂等）。</summary>
+    public static void ApplyItemColliderFromSprite(GameObject go, BoxCollider2D col)
+    {
+        if (go == null || col == null)
+            return;
+
+        var sr = go.GetComponent<SpriteRenderer>();
+        if (sr == null || sr.sprite == null)
+            return;
+
+        Bounds b = sr.sprite.bounds;
+        col.edgeRadius = 0f;
+        col.size = new Vector2(
+            b.size.x * GameConstants.ItemColliderScaleX,
+            b.size.y * GameConstants.ItemColliderScaleY);
+        col.offset = b.center;
     }
 
     /// <summary>放置物动态刚体：下落、可被躲藏者推动。</summary>

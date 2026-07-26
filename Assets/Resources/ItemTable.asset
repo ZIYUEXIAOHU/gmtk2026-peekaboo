@@ -13,9 +13,41 @@ MonoBehaviour:
   m_Name: ItemTable
   m_EditorClassIdentifier: 
   items:
+  - displayName: Big Table
+    prefab: {fileID: 6045667839303426403, guid: ae180ae2afa039944aed353e8ed55ca2, type: 3}
+    icon: {fileID: 21300000, guid: 2a0c1bc05ee7ad548ad56e95245f9720, type: 3}
+    size: 0
+  - displayName: Blue Bed
+    prefab: {fileID: 7556324004470732978, guid: e479faf006fcadd45824cd1f84a60c95, type: 3}
+    icon: {fileID: 21300000, guid: c6dd8e7827465e945972caadcfc7669a, type: 3}
+    size: 0
   - displayName: Coffee Table
     prefab: {fileID: 1000000001, guid: 087f5cadc48e44749690ae0d768c9f63, type: 3}
     icon: {fileID: 21300000, guid: b319811ac8d342cd8e3f0ee5549506b6, type: 3}
+    size: 0
+  - displayName: Giant Rabbit
+    prefab: {fileID: 1276863406849475840, guid: 69f2fd2b9c27e4f44b64ea074e9e45f4, type: 3}
+    icon: {fileID: 21300000, guid: 5d7d2346476f35f44917e430ffad842d, type: 3}
+    size: 0
+  - displayName: Green Shelf
+    prefab: {fileID: 5752290126116052329, guid: 1a6959ac9fcf4d34e822f189ed141c5d, type: 3}
+    icon: {fileID: 21300000, guid: 05149f836cc848543b5adf319eaeaa16, type: 3}
+    size: 0
+  - displayName: Green White Table
+    prefab: {fileID: 1410198303896369282, guid: c1be738ae553bc14f8a9af691fb37ada, type: 3}
+    icon: {fileID: 21300000, guid: bbadcf393151ade40a94fa2424ffeb80, type: 3}
+    size: 0
+  - displayName: IV Stand
+    prefab: {fileID: 7215562539191560752, guid: ded22c0f2fa17834a987ca7a2faa0a44, type: 3}
+    icon: {fileID: 21300000, guid: 665c9a353eb53af4db4cba51c89a9377, type: 3}
+    size: 0
+  - displayName: Pink Chair
+    prefab: {fileID: 7933035832918449248, guid: 29647857457f0b94bbd1e46b5f594119, type: 3}
+    icon: {fileID: 21300000, guid: 67b942d97be695f4aa17db69ad0ebeb8, type: 3}
+    size: 0
+  - displayName: Pink Desk
+    prefab: {fileID: 3436434769373167479, guid: 29602ddef2049b240a2c326e0d5b2e0d, type: 3}
+    icon: {fileID: 21300000, guid: d49c050eb3cdad64fb6755e4164501a6, type: 3}
     size: 0
   - displayName: Rocking Horse
     prefab: {fileID: 1000000001, guid: 3e51e06c3db34159ba0a6c81f1551814, type: 3}
@@ -25,17 +57,61 @@ MonoBehaviour:
     prefab: {fileID: 1000000001, guid: 5be97a9de84540f3929c986b2561e2d1, type: 3}
     icon: {fileID: 21300000, guid: 03e62c689a5e4df69d8c0c222cc8379f, type: 3}
     size: 0
+  - displayName: Yellow Sofa
+    prefab: {fileID: 4851298936224343653, guid: 1611d142cfbdc5e44adf02724725ed54, type: 3}
+    icon: {fileID: 21300000, guid: 011fb62e75d374943a02e3a51172fc2e, type: 3}
+    size: 0
+  - displayName: Yellow Pole
+    prefab: {fileID: 4368828840990554761, guid: 6295c4a2acd7da241973e2c0930e011a, type: 3}
+    icon: {fileID: 21300000, guid: 2e40ccc0fa96a6d429d0f6a94a31502e, type: 3}
+    size: 0
+  - displayName: Basket
+    prefab: {fileID: 1905943487218261806, guid: c8d10500490024145b4269f7bfacfefb, type: 3}
+    icon: {fileID: 21300000, guid: 9041e2797590be144ad910ac04c5a73e, type: 3}
+    size: 1
+  - displayName: Box
+    prefab: {fileID: 8719844427263576688, guid: 3746f1e9f4d5d6b45a6743ea19e1fbaf, type: 3}
+    icon: {fileID: 21300000, guid: cfd0f81678ce770478acd4171745ffae, type: 3}
+    size: 1
+  - displayName: Cage
+    prefab: {fileID: 6539216348891239852, guid: 9007dacc041eb9c47b464971bb5bd208, type: 3}
+    icon: {fileID: 21300000, guid: 0e80bf06190678849af6eec30a02d4da, type: 3}
+    size: 1
+  - displayName: Candle
+    prefab: {fileID: 105772985590569093, guid: fe809785737dbc6499d204957cd66d6e, type: 3}
+    icon: {fileID: 21300000, guid: e025c5e64cd05ad49ab8a54e0ad324b8, type: 3}
+    size: 1
   - displayName: Desk Lamp
     prefab: {fileID: 1000000001, guid: b3d4d6b013e44c7fbf0752303669ca61, type: 3}
     icon: {fileID: 21300000, guid: 4306ba039401423daf76c83341fd18b2, type: 3}
+    size: 1
+  - displayName: Mirror
+    prefab: {fileID: 1101458420023700, guid: f3213796d1e75c241ac82d20346b1df9, type: 3}
+    icon: {fileID: 21300000, guid: 23c20e8e0decff645bbf1c5a6584b020, type: 3}
     size: 1
   - displayName: Music Box
     prefab: {fileID: 1000000001, guid: 73a8505294404b6baaab37afe2ccc115, type: 3}
     icon: {fileID: 21300000, guid: f7239421f8c94f0daed99abee9c93dae, type: 3}
     size: 1
+  - displayName: Old Lamp
+    prefab: {fileID: 6746023119752708715, guid: f16377383232d424fbcb5d57eb11b355, type: 3}
+    icon: {fileID: 21300000, guid: 23405134d1881ea41a37fc62d691b77a, type: 3}
+    size: 1
+  - displayName: Phonograph
+    prefab: {fileID: 7450755350144137101, guid: abe7bda3f0d817f4c8dc202d3292abda, type: 3}
+    icon: {fileID: 21300000, guid: 8d77b8ef8033699468ec37053d7b32e7, type: 3}
+    size: 1
   - displayName: Bunny Plush
     prefab: {fileID: 1000000001, guid: 73b75c72c5de478c9c2fbe0d1539f3fa, type: 3}
     icon: {fileID: 21300000, guid: b9531a078c324145899b1d4e1c647970, type: 3}
+    size: 1
+  - displayName: Rabbit Box
+    prefab: {fileID: 7523757557870279328, guid: bfe42335ce3920e47a4433c167063ae9, type: 3}
+    icon: {fileID: 21300000, guid: 315aec87cea36154c8b0a58ee96bcff1, type: 3}
+    size: 1
+  - displayName: Short Rabbit
+    prefab: {fileID: 2042019805638442880, guid: 4ea823d83b227a94b9a802dcc97c4e06, type: 3}
+    icon: {fileID: 21300000, guid: 2c0cdcfab9246b1439f5af4f55d90691, type: 3}
     size: 1
   - displayName: Side Table
     prefab: {fileID: 1000000001, guid: 1a5a5071d977494d9d8bd0121f7ddbc2, type: 3}
@@ -45,6 +121,18 @@ MonoBehaviour:
     prefab: {fileID: 1000000001, guid: 13bf1d794a53474dbdf1b8ca4a1c853b, type: 3}
     icon: {fileID: 21300000, guid: 0b5bc66e11ec4532b8742e812d382464, type: 3}
     size: 1
+  - displayName: Scale
+    prefab: {fileID: 8341057840592692400, guid: c21fb2077351d604588aa00930d4766b, type: 3}
+    icon: {fileID: 21300000, guid: 33fa2c59c6319b24e8b6b735d378bf7c, type: 3}
+    size: 1
+  - displayName: Flower
+    prefab: {fileID: 467894954683273029, guid: fe635080d6edc224c8b747667cde2005, type: 3}
+    icon: {fileID: 21300000, guid: bf2e2e5c2345cba4aa871ce134865301, type: 3}
+    size: 2
+  - displayName: Gaslight
+    prefab: {fileID: 2783024938764012317, guid: f9ccc9ec181534f46aa358c128edbc40, type: 3}
+    icon: {fileID: 21300000, guid: f2bb107310c27c64697ceb00716c8bb6, type: 3}
+    size: 2
   - displayName: Medicine Bottle
     prefab: {fileID: 1000000001, guid: a9e0370a269940038efa32ad134e9ded, type: 3}
     icon: {fileID: 21300000, guid: 7669b808b1304ac1853b6a2d6a4ebea7, type: 3}
@@ -52,6 +140,10 @@ MonoBehaviour:
   - displayName: Mint Bunny
     prefab: {fileID: 1000000001, guid: 01cc2a472c0b4d6888e914722d7fa92f, type: 3}
     icon: {fileID: 21300000, guid: 7363dab4a89a4492ba919c266b9c22ff, type: 3}
+    size: 2
+  - displayName: Small Vase
+    prefab: {fileID: 6226799345012036702, guid: d77683cdd759bbd4988078778e658ff6, type: 3}
+    icon: {fileID: 21300000, guid: f5a64bb43c77274438c0ef733a5180f2, type: 3}
     size: 2
   - displayName: Teacup
     prefab: {fileID: 1000000001, guid: 95e7b98cf23b4237a31f5e034f607ba7, type: 3}

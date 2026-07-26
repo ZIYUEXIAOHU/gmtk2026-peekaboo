@@ -74,6 +74,13 @@ public static class GameConstants
     public const float ItemScaleZ = 2.6f;
 
     /// <summary>
+    /// 物品碰撞箱相对 sprite.bounds 的宽/高倍数。1 = 与贴图显示同大（再经 ItemScale* 变到世界尺寸）。
+    /// 生成 Prefab / 放置物 / 伪装者共用。
+    /// </summary>
+    public const float ItemColliderScaleX = 0.75f;
+    public const float ItemColliderScaleY = 1f;
+
+    /// <summary>
     /// BoxCollider2D 圆角的世界半径。直角底边易卡小突起；运行时换算为本地 edgeRadius。
     /// </summary>
     public const float ColliderEdgeRadiusWorld = 0.35f;
