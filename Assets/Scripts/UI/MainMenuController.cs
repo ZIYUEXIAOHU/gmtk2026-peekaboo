@@ -38,7 +38,7 @@ public class MainMenuController : MonoBehaviour
     public Button hunterBtn;        // 抓捕者按钮
     [Tooltip("身份按钮所在面板；为空则用 hiderBtn 的父物体")]
     public GameObject roleSelectPanel;
-    [Tooltip("创建房间时的默认最大人数（场景内无人数下拉框时使用）")]
+    [Tooltip("创建房间时的默认最大人数")]
     public int defaultMaxPlayers = 4;
     
     [Header("设置面板")]
@@ -54,6 +54,9 @@ public class MainMenuController : MonoBehaviour
     [Header("状态")]
     public TextMeshProUGUI statusText;
     
+    [Header("提示")]
+    public Image slotFullImage;  // SlotFull 提示图片
+    
     private RoomConnectionState currentConnectionState = RoomConnectionState.Disconnected;
     private CustomNetworkManager netManager;
     private ManualDiscovery discovery;
@@ -63,11 +66,16 @@ public class MainMenuController : MonoBehaviour
     private bool _waitingCreateEnter;
     private bool _roomEventsSubscribed;
     private bool isCreatingRoom;
+    private Coroutine hideSlotFullCoroutine;
     
     void Start()
     {
         netManager = FindObjectOfType<CustomNetworkManager>();
         discovery = FindObjectOfType<ManualDiscovery>();
+
+        // 初始隐藏 SlotFull 提示
+        if (slotFullImage != null)
+            slotFullImage.gameObject.SetActive(false);
 
         EnsureJoinUiRefs();
         
@@ -98,7 +106,7 @@ public class MainMenuController : MonoBehaviour
         if (createBackBtn != null)
             createBackBtn.onClick.AddListener(CloseCreatePanel);
         
-        // ===== 身份选择按钮 =====（创建面板分支在 OnSelectRoleClicked 里走 CreateRoomAs）
+        // ===== 身份选择按钮 =====
         WireRoleButton(hiderBtn, PlayerRole.Hider);
         WireRoleButton(hunterBtn, PlayerRole.Seeker);
         WireRoleButton(joinHiderBtn, PlayerRole.Hider);
@@ -119,6 +127,51 @@ public class MainMenuController : MonoBehaviour
         StartCoroutine(EnsureRoomEventsSubscribed());
         ShowMainMenu();
         LoadSettings();
+    }
+
+    // ==================== SlotFull 提示 ====================
+    private void ShowSlotFullMessage(bool show)
+    {
+        if (slotFullImage == null) return;
+        
+        slotFullImage.gameObject.SetActive(show);
+        
+        if (show)
+        {
+            if (hideSlotFullCoroutine != null)
+                StopCoroutine(hideSlotFullCoroutine);
+            hideSlotFullCoroutine = StartCoroutine(HideSlotFullImageDelayed());
+        }
+    }
+
+    private IEnumerator HideSlotFullImageDelayed()
+    {
+        yield return new WaitForSeconds(3f);
+        if (slotFullImage != null)
+        {
+            slotFullImage.gameObject.SetActive(false);
+        }
+        hideSlotFullCoroutine = null;
+    }
+
+    /// <summary>
+    /// 按钮悬停时检测是否满员，满员则显示提示
+    /// </summary>
+    public void OnRoleButtonHover(PlayerRole role)
+    {
+        if (!GameContract.IsRoomBound || GameContract.RoomState == null) return;
+        
+        RoomInfo? foundRoom = GameContract.RoomState.FoundRoom;
+        if (!foundRoom.HasValue) return;
+        
+        RoomInfo info = foundRoom.Value;
+        RoleSlots projected = RoleSlots.ProjectForJoiner(
+            info.currentPlayers, info.seekerCount, info.hiderCount);
+        
+        bool isFull = (role == PlayerRole.Hider && projected.HiderFull) ||
+                      (role == PlayerRole.Seeker && projected.SeekerFull);
+        
+        ShowSlotFullMessage(isFull);
     }
 
     void EnsureJoinUiRefs()
@@ -153,6 +206,20 @@ public class MainMenuController : MonoBehaviour
         if (btn == null) return;
         btn.onClick.RemoveAllListeners();
         btn.onClick.AddListener(() => OnSelectRoleClicked(role));
+        
+        // ===== 添加悬停事件 =====
+        var trigger = btn.gameObject.GetComponent<UnityEngine.EventSystems.EventTrigger>();
+        if (trigger == null)
+            trigger = btn.gameObject.AddComponent<UnityEngine.EventSystems.EventTrigger>();
+        
+        // 清除旧事件
+        trigger.triggers.Clear();
+        
+        // 添加 PointerEnter 事件
+        var enterEntry = new UnityEngine.EventSystems.EventTrigger.Entry();
+        enterEntry.eventID = UnityEngine.EventSystems.EventTriggerType.PointerEnter;
+        enterEntry.callback.AddListener((data) => OnRoleButtonHover(role));
+        trigger.triggers.Add(enterEntry);
     }
 
     IEnumerator EnsureRoomEventsSubscribed()
@@ -166,7 +233,7 @@ public class MainMenuController : MonoBehaviour
 
         SubscribeRoomEvents();
         if (!GameContract.IsRoomBound)
-            Debug.LogWarning("[MainMenu] 房间契约仍未绑定，加入/找房 UI 可能无响应");
+            Debug.LogWarning("[MainMenu] 房间契约仍未绑定");
     }
     
     void SubscribeRoomEvents()
@@ -285,8 +352,8 @@ public class MainMenuController : MonoBehaviour
             RoomErrorReason.ConnectionFailed => "🔌 网络连接失败",
             RoomErrorReason.AlreadyInRoom => "⚠️ 已在房间中",
             RoomErrorReason.SlotFull => error.message == "Seeker"
-                ? "⚠️ 抓捕者已满！"
-                : "⚠️ 躲藏者已满！",
+                ? "⚠️ SEEKER SLOT FULL!"
+                : "⚠️ HIDER SLOT FULL!",
             RoomErrorReason.RoleNotSelected => "⚠️ 请先选择身份",
             _ => $"❌ 操作失败：{error.message}"
         };
@@ -440,7 +507,6 @@ public class MainMenuController : MonoBehaviour
 
     void OnSelectRoleClicked(PlayerRole role)
     {
-        // 创建面板：走 CreateRoomAs（记偏好身份 + 契约/直连兜底 + 防重复点击）
         if (_createPanelOpen)
         {
             if (GameContract.IsRoomBound)
@@ -462,18 +528,21 @@ public class MainMenuController : MonoBehaviour
                 found.currentPlayers, found.seekerCount, found.hiderCount);
             if (role == PlayerRole.Hider && projected.HiderFull)
             {
-                if (statusText != null) statusText.text = "⚠️ 躲藏者已满！";
+                ShowSlotFullMessage(true);
                 return;
             }
             if (role == PlayerRole.Seeker && projected.SeekerFull)
             {
-                if (statusText != null) statusText.text = "⚠️ 抓捕者已满！";
+                ShowSlotFullMessage(true);
                 return;
             }
         }
 
         if (!GameContract.RoomCommands.TrySelectRoleBeforeEnter(role))
             return;
+
+        // 成功选择，隐藏提示
+        ShowSlotFullMessage(false);
 
         string name = role == PlayerRole.Hider ? "躲藏者" : "抓捕者";
         if (statusText != null)
@@ -586,10 +655,6 @@ public class MainMenuController : MonoBehaviour
         ShowMainMenu();
     }
 
-    /// <summary>
-    /// 创建面板 HIDER/HUNTER：创建房间 → 记住偏好身份 → 进入 GameScene 选角/练习。
-    /// （此前两按钮只 Debug.Log，导致「点躲藏者没反应」。）
-    /// </summary>
     void CreateRoomAs(PlayerRole preferredRole)
     {
         if (isCreatingRoom) return;
@@ -664,7 +729,6 @@ public class MainMenuController : MonoBehaviour
 
     IEnumerator EnterGameSceneAfterCreate()
     {
-        // 等一帧，让 Host 本地玩家 / NetworkGameState 完成生成
         yield return null;
         yield return new WaitForSeconds(0.35f);
 
