@@ -629,8 +629,20 @@ public class NetworkGameState : NetworkBehaviour, IGameStateReadonly, IGameComma
         {
             hitPlayer.hiderState = HiderState.Ghost;
             // Ghost 持续到下次随机变身（TickTransform 会拉回 Invisible）。
-            if (phase == GamePhase.Playing)
+        }
+
+        // Playing 计分：查到人 +50；查到放置物/诱饵 −10（查 Invisible 本体不奖惩）
+        if (phase == GamePhase.Playing)
+        {
+            if (hitHider)
+            {
                 seeker.score += GameConstants.SeekerScorePerInvestigate;
+            }
+            else if (IsInvestigablePlacedItem(target.netId))
+            {
+                seeker.score = Mathf.Max(
+                    0, seeker.score - GameConstants.SeekerScorePenaltyPlacedItem);
+            }
         }
 
         InvestigateInfo info = new InvestigateInfo
@@ -794,10 +806,14 @@ public class NetworkGameState : NetworkBehaviour, IGameStateReadonly, IGameComma
     {
         if (phase == GamePhase.Ended) return;
 
-        // Ended 后停止变身 / 心跳计时
+        // 结算前先把本帧应付的存活秒分发完，再停表
+        TickHiderSurvivalScore();
+
+        // Ended 后停止变身 / 心跳 / 存活计分
         pendingInvisibleReveal = false;
         nextTransformTime = double.MaxValue;
         nextHeartbeatTime = double.MaxValue;
+        nextHiderScoreTime = double.MaxValue;
 
         result = new MatchResult
         {
@@ -1339,6 +1355,16 @@ public class NetworkGameState : NetworkBehaviour, IGameStateReadonly, IGameComma
         public uint netId;
         public Vector2 position;
         public RoomPlayer linkedHider; // 非 null 且 Disguised/Invisible 时可能命中
+    }
+
+    /// <summary>目标是否为 InvestigableObject（放置物/诱饵/场景可调查物），而非躲藏者本体。</summary>
+    [Server]
+    static bool IsInvestigablePlacedItem(uint targetNetId)
+    {
+        if (targetNetId == GameConstants.InvalidNetId) return false;
+        if (!NetworkServer.spawned.TryGetValue(targetNetId, out NetworkIdentity identity))
+            return false;
+        return identity != null && identity.GetComponent<InvestigableObject>() != null;
     }
 
     /// <summary>
