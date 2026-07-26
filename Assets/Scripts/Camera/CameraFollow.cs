@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
 public class CameraFollow : MonoBehaviour
 {
@@ -11,13 +12,13 @@ public class CameraFollow : MonoBehaviour
     public Vector2 minBounds;
     public Vector2 maxBounds;
     
-    [Header("区域边界（同一场景不同房间）")]
-    public ZoneBounds[] zoneBounds;
+    [Header("场景边界预设（根据场景切换）")]
+    public SceneBounds[] sceneBounds;
     
     [Header("可视化调试")]
-    public bool showBoundsInScene = true;      // 在 Scene 视图中显示边界
-    public Color boundsColor = Color.green;     // 边界颜色
-    public Color activeBoundsColor = Color.red; // 激活边界颜色
+    public bool showBoundsInScene = true;
+    public Color boundsColor = Color.green;
+    public Color activeBoundsColor = Color.red;
     
     private Transform target;
     private Vector3 velocity = Vector3.zero;
@@ -25,12 +26,12 @@ public class CameraFollow : MonoBehaviour
     private int lastCheckFrame = -1;
     private const int CheckInterval = 30;
     private uint lastLocalPlayerNetId = 0;
-    private string currentZoneName = "";
+    private string currentSceneName = "";
     
     [System.Serializable]
-    public class ZoneBounds
+    public class SceneBounds
     {
-        public string zoneName;
+        public string sceneName;        // 场景名称（LobbyScene / GameScene）
         public Vector2 minBounds;
         public Vector2 maxBounds;
         public bool useBounds = true;
@@ -39,6 +40,7 @@ public class CameraFollow : MonoBehaviour
     void Start()
     {
         FindLocalPlayer();
+        ApplySceneBounds();
     }
     
     void Update()
@@ -54,7 +56,14 @@ public class CameraFollow : MonoBehaviour
             FindLocalPlayer();
         }
         
-        UpdateZoneBounds();
+        // ===== 检测场景变化 =====
+        string newSceneName = SceneManager.GetActiveScene().name;
+        if (newSceneName != currentSceneName)
+        {
+            currentSceneName = newSceneName;
+            ApplySceneBounds();
+            Debug.Log($"📏 切换到场景: {currentSceneName}");
+        }
     }
     
     void LateUpdate()
@@ -78,30 +87,33 @@ public class CameraFollow : MonoBehaviour
         transform.position = smoothedPosition;
     }
     
-    void UpdateZoneBounds()
+    /// <summary>
+    /// 根据当前场景应用边界
+    /// </summary>
+    void ApplySceneBounds()
     {
-        if (target == null) return;
-        if (zoneBounds == null || zoneBounds.Length == 0) return;
-        
-        Vector2 playerPos = target.position;
-        
-        foreach (var zone in zoneBounds)
+        if (sceneBounds == null || sceneBounds.Length == 0)
         {
-            if (playerPos.x >= zone.minBounds.x && playerPos.x <= zone.maxBounds.x &&
-                playerPos.y >= zone.minBounds.y && playerPos.y <= zone.maxBounds.y)
+            Debug.Log("📏 没有场景边界预设，使用当前设置");
+            return;
+        }
+        
+        string sceneName = SceneManager.GetActiveScene().name;
+        currentSceneName = sceneName;
+        
+        foreach (var preset in sceneBounds)
+        {
+            if (preset.sceneName == sceneName)
             {
-                useBounds = zone.useBounds;
-                minBounds = zone.minBounds;
-                maxBounds = zone.maxBounds;
-                
-                if (currentZoneName != zone.zoneName)
-                {
-                    currentZoneName = zone.zoneName;
-                    Debug.Log($"📏 进入区域: {zone.zoneName}, 边界: {minBounds} ~ {maxBounds}");
-                }
+                useBounds = preset.useBounds;
+                minBounds = preset.minBounds;
+                maxBounds = preset.maxBounds;
+                Debug.Log($"📏 应用场景 {sceneName} 边界: X({minBounds.x}~{maxBounds.x}), Y({minBounds.y}~{maxBounds.y})");
                 return;
             }
         }
+        
+        Debug.Log($"⚠️ 未找到场景 {sceneName} 的边界预设，使用默认设置");
     }
     
     void FindLocalPlayer()
@@ -166,23 +178,20 @@ public class CameraFollow : MonoBehaviour
     {
         if (!showBoundsInScene) return;
         
-        // ===== 绘制当前激活的边界 =====
         if (useBounds)
         {
             DrawBounds(minBounds, maxBounds, activeBoundsColor, "当前边界");
         }
         
-        // ===== 绘制所有区域边界 =====
-        if (zoneBounds != null)
+        if (sceneBounds != null)
         {
-            foreach (var zone in zoneBounds)
+            foreach (var preset in sceneBounds)
             {
-                if (zone.useBounds)
+                if (preset.useBounds)
                 {
-                    // 判断是否激活
-                    bool isActive = (zone.minBounds == minBounds && zone.maxBounds == maxBounds);
+                    bool isActive = (preset.minBounds == minBounds && preset.maxBounds == maxBounds);
                     Color color = isActive ? activeBoundsColor : boundsColor;
-                    DrawBounds(zone.minBounds, zone.maxBounds, color, zone.zoneName, !isActive);
+                    DrawBounds(preset.minBounds, preset.maxBounds, color, preset.sceneName, !isActive);
                 }
             }
         }
@@ -190,7 +199,6 @@ public class CameraFollow : MonoBehaviour
     
     void DrawBounds(Vector2 min, Vector2 max, Color color, string label = "", bool dashed = false)
     {
-        // ===== 绘制矩形边框 =====
         Vector3[] corners = new Vector3[5];
         corners[0] = new Vector3(min.x, min.y, 0);
         corners[1] = new Vector3(max.x, min.y, 0);
@@ -202,7 +210,6 @@ public class CameraFollow : MonoBehaviour
         
         if (dashed)
         {
-            // 虚线效果（通过短线段模拟）
             float dashLength = 0.5f;
             float gapLength = 0.3f;
             DrawDashedLine(corners[0], corners[1], dashLength, gapLength);
@@ -218,14 +225,12 @@ public class CameraFollow : MonoBehaviour
             Gizmos.DrawLine(corners[3], corners[0]);
         }
         
-        // ===== 绘制标签（在编辑器模式下） =====
         #if UNITY_EDITOR
         if (!string.IsNullOrEmpty(label))
         {
             Vector3 center = new Vector3((min.x + max.x) / 2, (max.y + 0.3f), 0);
             UnityEditor.Handles.Label(center, label);
             
-            // 显示坐标
             Vector3 bottomCenter = new Vector3((min.x + max.x) / 2, min.y - 0.3f, 0);
             UnityEditor.Handles.Label(bottomCenter, $"({min.x:F1}, {min.y:F1}) ~ ({max.x:F1}, {max.y:F1})");
         }

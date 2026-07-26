@@ -35,8 +35,8 @@ public class HiderUIController : MonoBehaviour
     private List<Image> slotIcons = new List<Image>();
     private List<Image> slotHighlights = new List<Image>();
     private List<GameObject> slotObjects = new List<GameObject>();
-    private List<GameObject> usedBgs = new List<GameObject>();   // 深色背景
-    private List<GameObject> emptyBgs = new List<GameObject>();  // 浅色背景
+    private List<GameObject> usedBgs = new List<GameObject>();
+    private List<GameObject> emptyBgs = new List<GameObject>();
     private ItemTable itemTable;
     
     private List<IPlayerStateReadonly> aliveHiders = new List<IPlayerStateReadonly>();
@@ -94,7 +94,6 @@ public class HiderUIController : MonoBehaviour
         Image icon = slot.transform.Find("ItemIcon")?.GetComponent<Image>();
         Image highlight = slot.transform.Find("Highlight")?.GetComponent<Image>();
         
-        // ===== 获取两种背景 =====
         GameObject usedBg = slot.transform.Find("UsedBg")?.gameObject;
         GameObject emptyBg = slot.transform.Find("EmptyBg")?.gameObject;
         
@@ -116,7 +115,6 @@ public class HiderUIController : MonoBehaviour
         if (highlight != null)
             highlight.gameObject.SetActive(false);
         
-        // 默认显示浅色背景
         if (usedBg != null) usedBg.SetActive(false);
         if (emptyBg != null) emptyBg.SetActive(true);
         
@@ -175,7 +173,6 @@ public class HiderUIController : MonoBehaviour
             {
                 slot.SetActive(true);
                 
-                // ===== 有物品：显示深色背景，隐藏浅色背景 =====
                 if (i < usedBgs.Count && usedBgs[i] != null)
                     usedBgs[i].SetActive(true);
                 if (i < emptyBgs.Count && emptyBgs[i] != null)
@@ -212,7 +209,6 @@ public class HiderUIController : MonoBehaviour
             {
                 slot.SetActive(true);
                 
-                // ===== 没有物品：显示浅色背景，隐藏深色背景 =====
                 if (i < usedBgs.Count && usedBgs[i] != null)
                     usedBgs[i].SetActive(false);
                 if (i < emptyBgs.Count && emptyBgs[i] != null)
@@ -268,7 +264,7 @@ public class HiderUIController : MonoBehaviour
         
         if (hiderStateText != null)
         {
-            hiderStateText.text = "⚫ 已捕获 - 观战中";
+            hiderStateText.text = "⚫ CAPTURED - SPECTATING";
             hiderStateText.color = capturedColor;
         }
         if (disguiseStatusIcon != null)
@@ -298,9 +294,9 @@ public class HiderUIController : MonoBehaviour
         {
             ShowObserverUI(false);
             if (observerNameText != null)
-                observerNameText.text = "无存活队友";
+                observerNameText.text = "NO TEAMMATES ALIVE";
             if (observerStatusText != null)
-                observerStatusText.text = "游戏结束";
+                observerStatusText.text = "GAME OVER";
         }
     }
     
@@ -328,9 +324,9 @@ public class HiderUIController : MonoBehaviour
         if (aliveHiders.Count == 0 || currentObserverIndex >= aliveHiders.Count)
         {
             if (observerNameText != null)
-                observerNameText.text = "无存活队友";
+                observerNameText.text = "NO TEAMMATES ALIVE";
             if (observerStatusText != null)
-                observerStatusText.text = "游戏结束";
+                observerStatusText.text = "GAME OVER";
             return;
         }
         
@@ -343,7 +339,7 @@ public class HiderUIController : MonoBehaviour
         if (observerStatusText != null)
         {
             bool isAlive = (target.HiderState != HiderState.Captured);
-            observerStatusText.text = isAlive ? "🟢 存活" : "🔴 已捕获";
+            observerStatusText.text = isAlive ? "🟢 ALIVE" : "🔴 CAPTURED";
             observerStatusText.color = isAlive ? new Color(0.2f, 0.8f, 0.2f) : Color.red;
         }
         
@@ -391,7 +387,7 @@ public class HiderUIController : MonoBehaviour
                 stateColor = ghostColor;
                 break;
             case HiderState.Captured:
-                stateText = "⚫ 已捕获 - 观战中";
+                stateText = "⚫ CAPTURED - SPECTATING";
                 stateColor = capturedColor;
                 break;
             default:
