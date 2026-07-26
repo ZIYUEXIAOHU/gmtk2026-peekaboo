@@ -7,6 +7,8 @@ using Mirror;
 
 public class MainMenuController : MonoBehaviour
 {
+    public const string PrefPreferredRole = "PreferredRole";
+
     [Header("主菜单")]
     public GameObject mainMenuPanel;  // GameMenuPanel
 
@@ -36,6 +38,8 @@ public class MainMenuController : MonoBehaviour
     public Button hunterBtn;        // 抓捕者按钮
     [Tooltip("身份按钮所在面板；为空则用 hiderBtn 的父物体")]
     public GameObject roleSelectPanel;
+    [Tooltip("创建房间时的默认最大人数（场景内无人数下拉框时使用）")]
+    public int defaultMaxPlayers = 4;
     
     [Header("设置面板")]
     public GameObject settingsPanel;
@@ -58,6 +62,7 @@ public class MainMenuController : MonoBehaviour
     
     private bool _waitingCreateEnter;
     private bool _roomEventsSubscribed;
+    private bool isCreatingRoom;
     
     void Start()
     {
@@ -93,7 +98,7 @@ public class MainMenuController : MonoBehaviour
         if (createBackBtn != null)
             createBackBtn.onClick.AddListener(CloseCreatePanel);
         
-        // ===== 身份选择按钮 =====
+        // ===== 身份选择按钮 =====（创建面板分支在 OnSelectRoleClicked 里走 CreateRoomAs）
         WireRoleButton(hiderBtn, PlayerRole.Hider);
         WireRoleButton(hunterBtn, PlayerRole.Seeker);
         WireRoleButton(joinHiderBtn, PlayerRole.Hider);
@@ -269,6 +274,9 @@ public class MainMenuController : MonoBehaviour
     
     void OnRoomError(RoomError error)
     {
+        if (error.op == RoomOp.Create)
+            isCreatingRoom = false;
+
         string errorMsg = error.reason switch
         {
             RoomErrorReason.Timeout => "⏰ 操作超时",
@@ -432,6 +440,15 @@ public class MainMenuController : MonoBehaviour
 
     void OnSelectRoleClicked(PlayerRole role)
     {
+        // 创建面板：走 CreateRoomAs（记偏好身份 + 契约/直连兜底 + 防重复点击）
+        if (_createPanelOpen)
+        {
+            if (GameContract.IsRoomBound)
+                GameContract.RoomCommands.TrySelectRoleBeforeEnter(role);
+            CreateRoomAs(role);
+            return;
+        }
+
         if (!GameContract.IsRoomBound)
         {
             if (statusText != null) statusText.text = "❌ 房间服务未就绪";
@@ -555,7 +572,7 @@ public class MainMenuController : MonoBehaviour
             mainMenuPanel.SetActive(false);
         
         if (statusText != null)
-            statusText.text = "🏠 选择身份并创建房间";
+            statusText.text = "🏠 选择身份以创建房间";
 
         SetRoleSelectVisible(true);
         SetRoleButtonInteractable(hiderBtn, true);
@@ -567,6 +584,107 @@ public class MainMenuController : MonoBehaviour
         _createPanelOpen = false;
         if (createPanel != null) createPanel.SetActive(false);
         ShowMainMenu();
+    }
+
+    /// <summary>
+    /// 创建面板 HIDER/HUNTER：创建房间 → 记住偏好身份 → 进入 GameScene 选角/练习。
+    /// （此前两按钮只 Debug.Log，导致「点躲藏者没反应」。）
+    /// </summary>
+    void CreateRoomAs(PlayerRole preferredRole)
+    {
+        if (isCreatingRoom) return;
+
+        if (preferredRole != PlayerRole.Hider && preferredRole != PlayerRole.Seeker)
+        {
+            Debug.LogWarning("[MainMenu] CreateRoomAs 收到无效身份");
+            return;
+        }
+
+        if (netManager == null)
+            netManager = FindObjectOfType<CustomNetworkManager>();
+        if (discovery == null)
+            discovery = FindObjectOfType<ManualDiscovery>();
+
+        if (netManager == null)
+        {
+            SetStatus("❌ 找不到网络管理器", Color.red);
+            return;
+        }
+
+        if (NetworkServer.active || NetworkClient.active)
+        {
+            SetStatus("⚠️ 已在房间中，请先离开", Color.yellow);
+            return;
+        }
+
+        isCreatingRoom = true;
+        string roleLabel = preferredRole == PlayerRole.Hider ? "躲藏者" : "抓捕者";
+        SetStatus($"⏳ 正在以{roleLabel}创建房间...", Color.yellow);
+
+        PlayerPrefs.SetInt(PrefPreferredRole, (int)preferredRole);
+        PlayerPrefs.Save();
+
+        string roomName = $"{System.Environment.MachineName}的房间";
+        int maxPlayers = Mathf.Max(2, defaultMaxPlayers);
+
+        try
+        {
+            if (GameContract.IsRoomBound)
+            {
+                Debug.Log($"[MainMenu] 契约创建房间：{roomName}，偏好身份={preferredRole}");
+                GameContract.RoomCommands.CreateRoom(roomName, maxPlayers);
+            }
+            else
+            {
+                Debug.Log($"[MainMenu] 直连创建房间：{roomName}，偏好身份={preferredRole}");
+                PlayerPrefs.SetString("RoomName", roomName);
+                netManager.maxConnections = maxPlayers;
+                netManager.StartHost();
+                discovery?.StartBroadcasting();
+            }
+        }
+        catch (System.Exception e)
+        {
+            isCreatingRoom = false;
+            SetStatus($"❌ 创建失败：{e.Message}", Color.red);
+            Debug.LogError($"[MainMenu] 创建房间异常：{e}");
+            return;
+        }
+
+        if (!NetworkServer.active)
+        {
+            isCreatingRoom = false;
+            SetStatus("❌ 创建失败：服务器未启动", Color.red);
+            return;
+        }
+
+        SetStatus($"✅ 已创建，正在进入选角...", Color.green);
+        StartCoroutine(EnterGameSceneAfterCreate());
+    }
+
+    IEnumerator EnterGameSceneAfterCreate()
+    {
+        // 等一帧，让 Host 本地玩家 / NetworkGameState 完成生成
+        yield return null;
+        yield return new WaitForSeconds(0.35f);
+
+        if (netManager == null || string.IsNullOrEmpty(netManager.gameScene))
+        {
+            isCreatingRoom = false;
+            SetStatus("❌ 无法进入游戏场景", Color.red);
+            yield break;
+        }
+
+        Debug.Log($"[MainMenu] 进入场景：{netManager.gameScene}");
+        netManager.ServerChangeScene(netManager.gameScene);
+        isCreatingRoom = false;
+    }
+
+    void SetStatus(string msg, Color color)
+    {
+        if (statusText == null) return;
+        statusText.text = msg;
+        statusText.color = color;
     }
     
     // ==================== 设置 ====================
