@@ -303,7 +303,7 @@ MonoBehaviour:
   syncDirection: 0
   syncMode: 0
   syncInterval: 0
-  defaultCursor: {fileID: 0}
+  defaultCursor: {fileID: 2800000, guid: 76e915a8b2adc3d47976561301ca6ec1, type: 3}
   attackCursor: {fileID: 0}
   hotSpot: {x: 0, y: 0}
   targetLayer:
@@ -693,6 +693,7 @@ MonoBehaviour:
   animator: {fileID: 820022002200220004}
   networkAnimator: {fileID: 820022002200220005}
   visualSpriteRenderer: {fileID: 820022002200220003}
+  attackMoveLockDuration: 0.6
   testMode: 0
   testInvestigateKey: 102
   testSlashKey: 32
@@ -715,3 +716,7 @@ MonoBehaviour:
   itemTable: {fileID: 0}
   invisibleLocalAlpha: 0.35
   ghostAlpha: 0.5
+  colliderScale: 1
+  minColliderSize: {x: 0.25, y: 0.25}
+  defaultColliderSize: {x: 1, y: 1}
+  defaultColliderOffset: {x: 0, y: 0}
