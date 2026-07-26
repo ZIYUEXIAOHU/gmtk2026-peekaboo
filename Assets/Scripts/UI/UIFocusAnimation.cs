@@ -38,6 +38,14 @@ public class UIFocusAnimation : MonoBehaviour
             return;
         }
 
+        // 本地已有玩家名时跳过聚焦（仅首次引导输入名字时播放）
+        string localName = PlayerPrefs.GetString(GameConstants.PlayerNamePrefsKey, string.Empty);
+        if (!string.IsNullOrWhiteSpace(localName))
+        {
+            Debug.Log($"📷 本地已有玩家名「{localName}」，跳过 UI 聚焦动画");
+            return;
+        }
+
         originalScales.Clear();
         originalPositions.Clear();
 

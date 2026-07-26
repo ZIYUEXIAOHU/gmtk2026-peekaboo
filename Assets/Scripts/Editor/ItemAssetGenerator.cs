@@ -33,17 +33,17 @@ public static class ItemAssetGenerator
 
     static readonly ItemDef[] Items =
     {
-        new ItemDef { relativePath = "Large/L-CoffeeTable.png", displayName = "咖啡桌", ppu = PpuLarge, size = ItemSize.Large },
-        new ItemDef { relativePath = "Large/L-RockingHorse.png", displayName = "摇摇马", ppu = PpuLarge, size = ItemSize.Large },
-        new ItemDef { relativePath = "Large/L-StandLamp.png", displayName = "落地灯", ppu = PpuLarge, size = ItemSize.Large },
-        new ItemDef { relativePath = "Middle/M-Lamp.png", displayName = "台灯", ppu = PpuMiddle, size = ItemSize.Middle },
-        new ItemDef { relativePath = "Middle/M-MusicBox.png", displayName = "音乐盒", ppu = PpuMiddle, size = ItemSize.Middle },
-        new ItemDef { relativePath = "Middle/M-Rabbit.png", displayName = "兔子玩偶", ppu = PpuMiddle, size = ItemSize.Middle },
-        new ItemDef { relativePath = "Middle/M-SideTable.png", displayName = "边桌", ppu = PpuMiddle, size = ItemSize.Middle },
-        new ItemDef { relativePath = "Middle/M-Vase.png", displayName = "花瓶", ppu = PpuMiddle, size = ItemSize.Middle },
-        new ItemDef { relativePath = "Small/S-Medicine.png", displayName = "药瓶", ppu = PpuSmall, size = ItemSize.Small },
-        new ItemDef { relativePath = "Small/S-MintRabbit.png", displayName = "薄荷兔", ppu = PpuSmall, size = ItemSize.Small },
-        new ItemDef { relativePath = "Small/S-TeaCup.png", displayName = "茶杯", ppu = PpuSmall, size = ItemSize.Small },
+        new ItemDef { relativePath = "Large/L-CoffeeTable.png", displayName = "Coffee Table", ppu = PpuLarge, size = ItemSize.Large },
+        new ItemDef { relativePath = "Large/L-RockingHorse.png", displayName = "Rocking Horse", ppu = PpuLarge, size = ItemSize.Large },
+        new ItemDef { relativePath = "Large/L-StandLamp.png", displayName = "Floor Lamp", ppu = PpuLarge, size = ItemSize.Large },
+        new ItemDef { relativePath = "Middle/M-Lamp.png", displayName = "Desk Lamp", ppu = PpuMiddle, size = ItemSize.Middle },
+        new ItemDef { relativePath = "Middle/M-MusicBox.png", displayName = "Music Box", ppu = PpuMiddle, size = ItemSize.Middle },
+        new ItemDef { relativePath = "Middle/M-Rabbit.png", displayName = "Bunny Plush", ppu = PpuMiddle, size = ItemSize.Middle },
+        new ItemDef { relativePath = "Middle/M-SideTable.png", displayName = "Side Table", ppu = PpuMiddle, size = ItemSize.Middle },
+        new ItemDef { relativePath = "Middle/M-Vase.png", displayName = "Vase", ppu = PpuMiddle, size = ItemSize.Middle },
+        new ItemDef { relativePath = "Small/S-Medicine.png", displayName = "Medicine Bottle", ppu = PpuSmall, size = ItemSize.Small },
+        new ItemDef { relativePath = "Small/S-MintRabbit.png", displayName = "Mint Bunny", ppu = PpuSmall, size = ItemSize.Small },
+        new ItemDef { relativePath = "Small/S-TeaCup.png", displayName = "Teacup", ppu = PpuSmall, size = ItemSize.Small },
     };
 
     [MenuItem("Peekaboo/Generate Item Assets")]
@@ -181,6 +181,18 @@ public static class ItemAssetGenerator
                 col.size = b.size;
                 col.offset = b.center;
             }
+            // Prefab 预览圆角；放置时 ConfigurePlacedItem 会再按世界尺度校准
+            CollisionLayers.ApplyColliderRounding(col);
+
+            // 动态刚体（重力/可推动）；运行时 ConfigurePlacedItem 会再校准参数
+            var rb = root.AddComponent<Rigidbody2D>();
+            rb.bodyType = RigidbodyType2D.Dynamic;
+            rb.mass = GameConstants.ItemMass;
+            rb.gravityScale = GameConstants.ItemGravityScale;
+            rb.drag = GameConstants.ItemLinearDrag;
+            rb.constraints = RigidbodyConstraints2D.FreezeRotation;
+            rb.collisionDetectionMode = CollisionDetectionMode2D.Continuous;
+            rb.interpolation = RigidbodyInterpolation2D.Interpolate;
 
             root.AddComponent<NetworkIdentity>();
             root.AddComponent<InvestigableObject>();

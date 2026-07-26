@@ -28,15 +28,15 @@ public class CreateRoomController : MonoBehaviour
 
         string errorMsg = error.reason switch
         {
-            RoomErrorReason.Timeout => "⏰ 创建房间超时",
-            RoomErrorReason.RoomFull => "👥 房间已满",
-            RoomErrorReason.ConnectionFailed => "🔌 网络连接失败",
-            RoomErrorReason.AlreadyInRoom => "⚠️ 已在房间中",
+            RoomErrorReason.Timeout => "⏰ Create room timed out",
+            RoomErrorReason.RoomFull => "👥 Room is full",
+            RoomErrorReason.ConnectionFailed => "🔌 Network connection failed",
+            RoomErrorReason.AlreadyInRoom => "⚠️ Already in a room",
             RoomErrorReason.SlotFull => error.message == "Seeker"
-                ? "⚠️ 抓捕者已满！"
-                : "⚠️ 躲藏者已满！",
-            RoomErrorReason.RoleNotSelected => "⚠️ 请先选择身份",
-            _ => $"❌ 创建失败：{error.message}"
+                ? "⚠️ SEEKER SLOT FULL!"
+                : "⚠️ HIDER SLOT FULL!",
+            RoomErrorReason.RoleNotSelected => "⚠️ Please select a role first",
+            _ => $"❌ Create failed: {error.message}"
         };
 
         ShowStatus(errorMsg, Color.red);
@@ -55,7 +55,7 @@ public class CreateRoomController : MonoBehaviour
 
             if (!string.IsNullOrEmpty(code))
             {
-                ShowStatus($"✅ 创建成功！短码：{code}", Color.green);
+                ShowStatus($"✅ Created successfully! Code: {code}", Color.green);
                 if (roomCodeText != null)
                 {
                     roomCodeText.gameObject.SetActive(true);
@@ -64,7 +64,7 @@ public class CreateRoomController : MonoBehaviour
             }
             else
             {
-                ShowStatus("✅ 房间创建成功！正在进入...", Color.green);
+                ShowStatus("✅ Room created successfully! Entering...", Color.green);
             }
 
             StartCoroutine(DelayedEnterGameScene());
@@ -126,8 +126,11 @@ public class CreateRoomController : MonoBehaviour
     
     string GetDefaultRoomName()
     {
-        string playerName = System.Environment.MachineName;
-        return $"{playerName}的房间";
+        string raw = PlayerPrefs.GetString(GameConstants.PlayerNamePrefsKey, string.Empty);
+        string playerName = string.IsNullOrWhiteSpace(raw)
+            ? GameConstants.DefaultPlayerName
+            : RoomPlayer.SanitizePlayerName(raw);
+        return $"{playerName}'s Room";
     }
     
     void CreateRoom()
@@ -135,19 +138,19 @@ public class CreateRoomController : MonoBehaviour
         string roomName = roomNameInput.text.Trim();
         if (string.IsNullOrEmpty(roomName))
         {
-            ShowStatus("❌ 请输入房间名称！", Color.red);
+            ShowStatus("❌ Please enter a room name!", Color.red);
             return;
         }
 
         if (GameContract.IsRoomBound &&
             GameContract.RoomState.PreferredRole == PlayerRole.None)
         {
-            ShowStatus("⚠️ 请先选择身份", Color.red);
+            ShowStatus("⚠️ Please select a role first", Color.red);
             return;
         }
         
         int maxPlayers = GetMaxPlayers();
-        ShowStatus($"⏳ 正在创建房间 \"{roomName}\"...", Color.yellow);
+        ShowStatus($"⏳ Creating room \"{roomName}\"...", Color.yellow);
         _waitingEnterScene = true;
         
         if (GameContract.IsRoomBound)
@@ -159,7 +162,7 @@ public class CreateRoomController : MonoBehaviour
         
         if (netManager == null)
         {
-            ShowStatus("❌ 错误：找不到网络管理器！", Color.red);
+            ShowStatus("❌ Error: network manager not found!", Color.red);
             _waitingEnterScene = false;
             return;
         }
@@ -171,7 +174,7 @@ public class CreateRoomController : MonoBehaviour
         if (discovery != null)
             discovery.StartBroadcasting();
 
-        ShowStatus($"✅ 房间 \"{roomName}\" 创建成功！正在进入...", Color.green);
+        ShowStatus($"✅ Room \"{roomName}\" created successfully! Entering...", Color.green);
         StartCoroutine(DelayedEnterGameScene());
     }
 
@@ -232,7 +235,7 @@ public class CreateRoomController : MonoBehaviour
     {
         roomNameInput.text = GetDefaultRoomName();
         maxPlayerDropdown.value = 2;
-        createStatusText.text = "填写信息创建房间";
+        createStatusText.text = "Fill in details to create a room";
         createStatusText.color = Color.white;
         createStatusText.gameObject.SetActive(false);
         if (roomCodeText != null)

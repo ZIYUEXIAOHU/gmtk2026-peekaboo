@@ -2841,8 +2841,8 @@ RectTransform:
   - {fileID: 663030477}
   - {fileID: 68614199}
   - {fileID: 206806280}
-  - {fileID: 1681468757}
   - {fileID: 405465394}
+  - {fileID: 1681468757}
   m_Father: {fileID: 519420032}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
@@ -2931,6 +2931,7 @@ MonoBehaviour:
   settingsBtn: {fileID: 264321960}
   quitGameBtn: {fileID: 2059282479}
   playerNameInput: {fileID: 590403337}
+  namePanel: {fileID: 0}
   joinPanel: {fileID: 68614198}
   joinBtn: {fileID: 25290645}
   joinBackBtn: {fileID: 562831796}
@@ -6670,7 +6671,7 @@ MonoBehaviour:
     m_SelectOnRight: {fileID: 0}
   m_Transition: 1
   m_Colors:
-    m_NormalColor: {r: 0.6313726, g: 0.6313726, b: 0.6313726, a: 1}
+    m_NormalColor: {r: 1, g: 1, b: 1, a: 1}
     m_HighlightedColor: {r: 0.9607843, g: 0.9607843, b: 0.9607843, a: 1}
     m_PressedColor: {r: 0.78431374, g: 0.78431374, b: 0.78431374, a: 1}
     m_SelectedColor: {r: 0.9607843, g: 0.9607843, b: 0.9607843, a: 1}

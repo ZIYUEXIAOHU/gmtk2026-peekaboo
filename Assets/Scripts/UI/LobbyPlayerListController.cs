@@ -36,7 +36,7 @@ public class LobbyPlayerListController : MonoBehaviour
         
         RefreshHeight();
         
-        Debug.Log($"✅ LobbyPlayerListController 初始化完成");
+        Debug.Log($"✅ LobbyPlayerListController 初始化完成（仅管高度；列表内容由 LobbyRoomController 写入）");
     }
     
     void Update()
@@ -200,47 +200,11 @@ public class LobbyPlayerListController : MonoBehaviour
             if (player == null) continue;
             
             GameObject item = Instantiate(playerItemPrefab, contentParent);
-            
-            TextMeshProUGUI nameText = item.transform.Find("PlayerNameText")?.GetComponent<TextMeshProUGUI>();
-            TextMeshProUGUI roleText = item.transform.Find("RoleNameText")?.GetComponent<TextMeshProUGUI>();
-            TextMeshProUGUI readyText = item.transform.Find("ReadyText")?.GetComponent<TextMeshProUGUI>();
-            
-            if (nameText != null)
-                nameText.text = player.PlayerName;
-            
-            if (roleText != null)
-            {
-                roleText.text = GetRoleDisplayName(player.Role);
-                roleText.color = GetRoleColor(player.Role);
-            }
-            
-            if (readyText != null)
-                readyText.text = "";
-            
+            PlayerListUIController.ApplyPlayerItemTexts(item, player.PlayerName, player.Role);
             playerItems.Add(item);
         }
         
         RefreshHeight();
         Debug.Log($"📊 玩家列表已更新，共 {playerItems.Count} 名玩家");
-    }
-    
-    string GetRoleDisplayName(PlayerRole role)
-    {
-        switch (role)
-        {
-            case PlayerRole.Hider: return "🟢 躲藏者";
-            case PlayerRole.Seeker: return "🔴 抓捕者";
-            default: return "❓ 未选择";
-        }
-    }
-    
-    Color GetRoleColor(PlayerRole role)
-    {
-        switch (role)
-        {
-            case PlayerRole.Hider: return new Color(0.2f, 0.8f, 0.2f);
-            case PlayerRole.Seeker: return new Color(0.9f, 0.3f, 0.2f);
-            default: return Color.gray;
-        }
     }
 }

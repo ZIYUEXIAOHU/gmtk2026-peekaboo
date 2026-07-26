@@ -6,8 +6,8 @@
 public enum GamePhase
 {
     Waiting = 0,  // 小队房间（练习大厅），等待房主开始
-    Prep = 1,     // 准备阶段：40 秒，躲藏者分散 + 放置物品
-    Playing = 2,  // 正式对局：250 秒
+    Prep = 1,     // 准备阶段：10 秒，躲藏者分散 + 放置物品
+    Playing = 2,  // 正式对局：180 秒
     Ended = 3,    // 已结算
 }
 
@@ -42,7 +42,7 @@ public enum PlaceFailReason
 public enum GameResult
 {
     None = 0,
-    HidersWin = 1,   // 250 秒结束仍有存活躲藏者
+    HidersWin = 1,   // 180 秒结束仍有存活躲藏者
     SeekersWin = 2,  // 躲藏者全部被捕
 }
 
@@ -55,6 +55,7 @@ public enum GameCommandType
     HostStartGame = 2,
     Investigate = 3,
     Slash = 4,
+    ReturnToWaiting = 5, // 结算后回练习大厅
 }
 
 /// <summary>命令被拒绝的原因（程序 1 裁定后回给发起者）。</summary>

@@ -13,12 +13,22 @@ using UnityEngine;
 [RequireComponent(typeof(NetworkIdentity))]
 public class InvestigableObject : NetworkBehaviour
 {
+    const float SyncPosEpsilonSqr = 0.0001f;
+
     [SyncVar]
     private int itemId = GameConstants.InvalidItemId;
 
     /// <summary>关联躲藏者 netId；诱饵/场景物为 InvalidNetId。</summary>
     [SyncVar]
     private uint hiderNetId = GameConstants.InvalidNetId;
+
+    [SyncVar(hook = nameof(OnSyncedPositionChanged))]
+    Vector2 syncedPosition;
+
+    [SyncVar]
+    Vector2 syncedVelocity;
+
+    Rigidbody2D rb;
 
     public int ItemId => itemId;
     public uint HiderNetId => hiderNetId;
@@ -29,12 +39,19 @@ public class InvestigableObject : NetworkBehaviour
     void Awake()
     {
         CollisionLayers.ConfigurePlacedItem(gameObject);
+        rb = GetComponent<Rigidbody2D>();
     }
 
     public override void OnStartClient()
     {
         base.OnStartClient();
         CollisionLayers.ConfigurePlacedItem(gameObject);
+        rb = GetComponent<Rigidbody2D>();
+
+        // 纯客户端不本地模拟，跟随后端权威位置
+        if (!isServer && rb != null)
+            rb.bodyType = RigidbodyType2D.Kinematic;
+
         StartCoroutine(IgnoreOverlappingHidersBriefly());
     }
 
@@ -42,6 +59,14 @@ public class InvestigableObject : NetworkBehaviour
     {
         base.OnStartServer();
         CollisionLayers.ConfigurePlacedItem(gameObject);
+        rb = GetComponent<Rigidbody2D>();
+        if (rb != null)
+        {
+            rb.bodyType = RigidbodyType2D.Dynamic;
+            syncedPosition = rb.position;
+            syncedVelocity = rb.velocity;
+        }
+
         StartCoroutine(IgnoreOverlappingHidersBriefly());
     }
 
@@ -51,6 +76,46 @@ public class InvestigableObject : NetworkBehaviour
         itemId = placedItemId;
         hiderNetId = linkedHiderNetId;
         CollisionLayers.ConfigurePlacedItem(gameObject);
+        rb = GetComponent<Rigidbody2D>();
+        if (rb != null)
+        {
+            rb.bodyType = RigidbodyType2D.Dynamic;
+            syncedPosition = rb.position;
+            syncedVelocity = Vector2.zero;
+        }
+    }
+
+    void FixedUpdate()
+    {
+        if (rb == null)
+            return;
+
+        if (isServer)
+        {
+            Vector2 pos = rb.position;
+            Vector2 vel = rb.velocity;
+            if ((pos - syncedPosition).sqrMagnitude > SyncPosEpsilonSqr ||
+                (vel - syncedVelocity).sqrMagnitude > SyncPosEpsilonSqr)
+            {
+                syncedPosition = pos;
+                syncedVelocity = vel;
+            }
+            return;
+        }
+
+        // 客户端：插值跟随权威位姿
+        rb.velocity = syncedVelocity;
+        rb.MovePosition(Vector2.Lerp(rb.position, syncedPosition, 0.4f));
+    }
+
+    void OnSyncedPositionChanged(Vector2 _, Vector2 newPos)
+    {
+        if (isServer || rb == null)
+            return;
+
+        // 瞬移过大时直接贴合，避免插值拖尾
+        if ((rb.position - newPos).sqrMagnitude > 4f)
+            rb.position = newPos;
     }
 
     /// <summary>

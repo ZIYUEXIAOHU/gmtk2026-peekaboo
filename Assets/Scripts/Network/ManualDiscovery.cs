@@ -108,12 +108,12 @@ public class ManualDiscovery : MonoBehaviour
             CustomNetworkManager nm = FindObjectOfType<CustomNetworkManager>();
             if (nm == null) return;
 
-            string roomName = PlayerPrefs.GetString("RoomName", "躲猫猫房间");
+            string roomName = PlayerPrefs.GetString("RoomName", "Peekaboo Room");
             string hostName = System.Environment.MachineName;
             int currentPlayers = nm.roomPlayers?.Count ?? 0;
             int maxPlayers = nm.maxConnections;
             int status = (int)ResolveBroadcastRoomStatus();
-            string gameMode = PlayerPrefs.GetString("GameMode", "经典模式");
+            string gameMode = PlayerPrefs.GetString("GameMode", "Classic Mode");
             // 第 7 段：房间短码；第 8/9 段：已选抓捕/躲藏人数（旧客户端可忽略）
             string roomCode = NetworkRoomService.Instance != null
                 ? NetworkRoomService.Instance.CurrentRoomCode

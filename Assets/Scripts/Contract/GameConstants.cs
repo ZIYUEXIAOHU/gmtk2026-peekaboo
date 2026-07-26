@@ -10,8 +10,8 @@ public static class GameConstants
     public const float SeekerMoveSpeed = 0.5f;
 
     // ---- 阶段时长（秒）----
-    public const float PrepDuration = 5f;    // 躲藏者准备阶段
-    public const float MatchDuration = 250f;  // 正式对局
+    public const float PrepDuration = 10f;   // 躲藏者准备阶段
+    public const float MatchDuration = 180f; // 正式对局
 
     // ---- 躲藏者随机变化 ----
     public const float TransformInterval = 50f;             // 每 50 秒变身一次
@@ -25,7 +25,7 @@ public static class GameConstants
     // ---- 交互范围（数值可调，但只在此处改）----
     /// <summary>探测圈 / F 调查范围（世界单位）。角色根节点约 3.5×4，过小会导致「贴脸也调查不到」。</summary>
     public const float InvestigateRange = 5.0f;
-    /// <summary>F 调查：鼠标判定半径（物品约 3×3.4，取半幅量级）。</summary>
+    /// <summary>F 调查：鼠标判定半径（物品约 2.6×3.0，取半幅量级）。</summary>
     public const float InvestigateCursorPickRadius = 2.0f;
     public const float SlashRange = 2.0f;         // 空格/身位劈砍范围
     /// <summary>鼠标攻击特效圆心半径（与身位圈并集裁定鬼魂）。</summary>
@@ -37,9 +37,21 @@ public static class GameConstants
     // 鬼魂恢复时机 = 下一次随机变化，无独立时长；此处不定义恢复时间
 
     // ---- 物品显示尺度（略小于 RoomPlayer 根节点 3.5×4，伪装/放置物共用）----
-    public const float ItemScaleX = 3.0f;
-    public const float ItemScaleY = 3.4f;
-    public const float ItemScaleZ = 3.0f;
+    public const float ItemScaleX = 2.6f;
+    public const float ItemScaleY = 3.0f;
+    public const float ItemScaleZ = 2.6f;
+
+    /// <summary>
+    /// BoxCollider2D 圆角的世界半径。直角底边易卡小突起；运行时换算为本地 edgeRadius。
+    /// </summary>
+    public const float ColliderEdgeRadiusWorld = 0.35f;
+
+    // ---- 放置物物理（与 Hider 重力一致，质量略轻便于推动）----
+    public const float ItemGravityScale = 3f;
+    public const float ItemMass = 0.45f;
+    public const float ItemLinearDrag = 0.8f;
+    /// <summary>楼梯区内放置物被推向楼梯中心的水平速度。</summary>
+    public const float StairItemCenterPushSpeed = 3.5f;
 
     // ---- 展示名（仅 UI，不参与程序身份区分）----
     public const string DefaultPlayerName = "Shui";

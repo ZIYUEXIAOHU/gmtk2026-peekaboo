@@ -53,10 +53,17 @@ public class TopBarController : MonoBehaviour
     
     void Update()
     {
-        if (GameContract.IsBound && GameContract.State != null)
-        {
-            UpdateHiderIcons();
-        }
+        if (!GameContract.IsBound || GameContract.State == null)
+            return;
+
+        UpdateHiderIcons();
+
+        // 契约无 tick 事件：每帧轮询 PhaseTimeLeft（与 GameMenuController 同模式）
+        GamePhase phase = GameContract.State.Phase;
+        if (phase == GamePhase.Prep || phase == GamePhase.Playing)
+            UpdateTimer(GameContract.State.PhaseTimeLeft);
+        else
+            UpdateTimerIdle();
     }
     
     public void UpdateHiderIcons()
@@ -139,8 +146,12 @@ public class TopBarController : MonoBehaviour
     public void UpdateTimer(float timeLeft)
     {
         if (timerText != null)
-        {
             timerText.text = Mathf.CeilToInt(timeLeft).ToString() + "s";
-        }
+    }
+
+    void UpdateTimerIdle()
+    {
+        if (timerText != null)
+            timerText.text = "--";
     }
 }

@@ -11,7 +11,6 @@ public class ResultPanelController : MonoBehaviour
     public TextMeshProUGUI titleTeam;        // HIDER / HUNTER
     public TextMeshProUGUI titleResult;      // WIN / FAIL
     public TextMeshProUGUI capturedText;     // CAPTURED: 3/4
-    public TextMeshProUGUI brokenText;       // BROKEN: 12 (3/9)
     public TextMeshProUGUI durationText;     // TOTAL TIME: 5:00
     public Transform scoreListParent;        // Content
     public GameObject scoreItemPrefab;
@@ -95,6 +94,7 @@ public class ResultPanelController : MonoBehaviour
         UnsubscribeEvents();
         boundEvents = GameContract.Events;
         boundEvents.OnGameEnded += OnGameEnded;
+        boundEvents.OnPhaseChanged += OnPhaseChanged;
         eventsSubscribed = true;
         Debug.Log("✅ ResultPanelController 订阅 OnGameEnded 成功");
         
@@ -106,9 +106,15 @@ public class ResultPanelController : MonoBehaviour
         if (!eventsSubscribed) return;
         
         if (boundEvents != null)
+        {
             boundEvents.OnGameEnded -= OnGameEnded;
+            boundEvents.OnPhaseChanged -= OnPhaseChanged;
+        }
         else if (GameContract.IsBound && GameContract.Events != null)
+        {
             GameContract.Events.OnGameEnded -= OnGameEnded;
+            GameContract.Events.OnPhaseChanged -= OnPhaseChanged;
+        }
         
         boundEvents = null;
         eventsSubscribed = false;
@@ -173,7 +179,7 @@ public class ResultPanelController : MonoBehaviour
         if (gameUI != null)
             gameUI.SetActive(false);
         
-        // ===== GAME #07 =====
+        // ===== GAME #：契约无 matchId / roundId，仅本地递增 stub =====
         if (gameNumberText != null)
         {
             gameNumber++;
@@ -193,14 +199,6 @@ public class ResultPanelController : MonoBehaviour
                     captured++;
             }
             capturedText.text = $"CAPTURED: {captured}/{totalHiders}";
-        }
-        
-        // ===== BROKEN: 12 (3/9) =====
-        if (brokenText != null)
-        {
-            int brokenItems = 0;
-            int brokenRounds = 0;
-            brokenText.text = $"BROKEN: {brokenItems} ({brokenRounds}/0)";
         }
         
         // ===== TOTAL TIME: 5:00 =====
@@ -256,46 +254,48 @@ public class ResultPanelController : MonoBehaviour
     
     void UpdateScoreList(List<IPlayerStateReadonly> players, MatchResult result)
     {
-        // ===== 清理旧的 ScoreItem =====
+        // ===== 清理上次动态生成的条目 =====
         foreach (var item in scoreItems)
         {
-            Destroy(item);
+            if (item != null)
+                Destroy(item);
         }
         scoreItems.Clear();
-        
-        if (scoreListParent != null)
-        {
-            for (int i = scoreListParent.childCount - 1; i >= 0; i--)
-            {
-                Transform child = scoreListParent.GetChild(i);
-                if (child != null)
-                {
-                    // ===== 保护 Win 和 Lost 面板，不被删除 =====
-                    if (child.name == "Win" || child.name == "Lost")
-                    {
-                        Debug.Log($"🛡️ 保护面板: {child.name}");
-                        continue;
-                    }
-                    
-                    // ===== 保护 ResultListController =====
-                    if (child.GetComponent<ResultListController>() != null)
-                    {
-                        Debug.Log($"🛡️ 保护 ResultListController");
-                        continue;
-                    }
-                    
-                    Destroy(child.gameObject);
-                }
-            }
-        }
+
+        // Win/Lost 的 Panel 容器也要清空（场景占位或上次残留），否则会出现「假名字 + 真玩家」两行
+        ClearResultContainer(resultListController != null ? resultListController.winPanel : null);
+        ClearResultContainer(resultListController != null ? resultListController.lostPanel : null);
         
         if (players == null || players.Count == 0) return;
-        
+
+        // 按 NetId 去重；未选身份不进结算列表
+        var seen = new HashSet<uint>();
         foreach (var player in players)
         {
             if (player == null) continue;
+            if (player.Role == PlayerRole.None) continue;
+            if (!seen.Add(player.NetId)) continue;
             bool won = DidPlayerWin(player, result);
             CreateScoreItem(player, won);
+        }
+
+        if (resultListController != null)
+            resultListController.Refresh();
+    }
+
+    void ClearResultContainer(RectTransform panel)
+    {
+        if (panel == null) return;
+        Transform container = panel.Find("Panel");
+        Transform parent = container != null ? container : panel;
+        for (int i = parent.childCount - 1; i >= 0; i--)
+        {
+            Transform child = parent.GetChild(i);
+            // 保留装饰节点（Image / winlost 标题等），只删结算条目预制体
+            if (child == null) continue;
+            if (child.name == "Panel" || child.name == "Image" || child.name == "winlost")
+                continue;
+            Destroy(child.gameObject);
         }
     }
     
@@ -319,61 +319,44 @@ public class ResultPanelController : MonoBehaviour
         {
             if (won && resultListController.winPanel != null)
             {
-                // ===== 找到 Win 面板下的 Panel 子物体 =====
                 Transform container = resultListController.winPanel.Find("Panel");
-                if (container != null)
-                {
-                    parent = container;
-                    Debug.Log($"✅ WIN 玩家 {player.PlayerName} → 生成到 Win/Panel");
-                }
-                else
-                {
-                    parent = resultListController.winPanel;
-                    Debug.Log($"✅ WIN 玩家 {player.PlayerName} → 生成到 Win");
-                }
+                parent = container != null ? container : (Transform)resultListController.winPanel;
             }
             else if (!won && resultListController.lostPanel != null)
             {
-                // ===== 找到 Lost 面板下的 Panel 子物体 =====
                 Transform container = resultListController.lostPanel.Find("Panel");
-                if (container != null)
-                {
-                    parent = container;
-                    Debug.Log($"❌ LOST 玩家 {player.PlayerName} → 生成到 Lost/Panel");
-                }
-                else
-                {
-                    parent = resultListController.lostPanel;
-                    Debug.Log($"❌ LOST 玩家 {player.PlayerName} → 生成到 Lost");
-                }
+                parent = container != null ? container : (Transform)resultListController.lostPanel;
             }
         }
         
         GameObject item = Instantiate(scoreItemPrefab, parent);
+
+        // ResultScoreItemPrefab / ScoreItemPrefab：PlayerNameText、RoleNameText、ScoreText、Image
+        // （旧代码误找 NameText / TeamText / ResultText / IconImage，导致名字从未写入）
+        Image iconImage = FindChildComponent<Image>(item.transform, "Image", "IconImage");
+        TextMeshProUGUI nameText = FindChildComponent<TextMeshProUGUI>(item.transform, "PlayerNameText", "NameText");
+        TextMeshProUGUI teamText = FindChildComponent<TextMeshProUGUI>(item.transform, "RoleNameText", "TeamText");
+        TextMeshProUGUI resultText = FindChildComponent<TextMeshProUGUI>(item.transform, "ResultText", "ScoreText");
+        TextMeshProUGUI timeText = FindChildComponent<TextMeshProUGUI>(item.transform, "TimeText");
         
-        Image iconImage = item.transform.Find("IconImage")?.GetComponent<Image>();
-        TextMeshProUGUI nameText = item.transform.Find("NameText")?.GetComponent<TextMeshProUGUI>();
-        TextMeshProUGUI teamText = item.transform.Find("TeamText")?.GetComponent<TextMeshProUGUI>();
-        TextMeshProUGUI resultText = item.transform.Find("ResultText")?.GetComponent<TextMeshProUGUI>();
-        TextMeshProUGUI timeText = item.transform.Find("TimeText")?.GetComponent<TextMeshProUGUI>();
-        
-        // ===== 设置图标 =====
         if (iconImage != null)
         {
             if (won)
             {
-                iconImage.sprite = aliveSprite;
+                if (aliveSprite != null)
+                    iconImage.sprite = aliveSprite;
                 iconImage.color = Color.white;
             }
             else
             {
-                iconImage.sprite = lostSprite;
+                if (lostSprite != null)
+                    iconImage.sprite = lostSprite;
                 iconImage.color = Color.gray;
             }
         }
         
         if (nameText != null)
-            nameText.text = player.PlayerName;
+            nameText.text = string.IsNullOrEmpty(player.PlayerName) ? "Player" : player.PlayerName;
         
         if (teamText != null)
         {
@@ -408,12 +391,25 @@ public class ResultPanelController : MonoBehaviour
             }
         }
         
+        // 契约缺口：无 per-player survival / alive time（且当前预制体用 ScoreText 显示 WIN/LOST）
         if (timeText != null)
-        {
             timeText.text = "00:00";
-        }
         
         scoreItems.Add(item);
+    }
+
+    static T FindChildComponent<T>(Transform root, params string[] names) where T : Component
+    {
+        if (root == null || names == null) return null;
+        foreach (string name in names)
+        {
+            if (string.IsNullOrEmpty(name)) continue;
+            Transform t = root.Find(name);
+            if (t == null) continue;
+            T c = t.GetComponent<T>();
+            if (c != null) return c;
+        }
+        return null;
     }
     
     void EnsureCanvasGroup()
@@ -459,14 +455,25 @@ public class ResultPanelController : MonoBehaviour
     
     void OnLobbyClicked()
     {
-        Debug.Log("🚪 返回大厅");
-        
+        Debug.Log("🚪 返回练习房间");
+
+        if (!GameContract.IsBound || GameContract.Commands == null)
+        {
+            Debug.LogWarning("⚠️ GameContract.Commands 未绑定，无法 ReturnToWaiting");
+            return;
+        }
+
+        GameContract.Commands.ReturnToWaiting();
+    }
+
+    void OnPhaseChanged(GamePhase phase, float duration)
+    {
+        if (phase != GamePhase.Waiting) return;
+
+        resultShown = false;
         SetPanelVisible(false);
-        
+
         if (resultListController != null)
             resultListController.gameObject.SetActive(false);
-        
-        if (gameUI != null)
-            gameUI.SetActive(true);
     }
 }

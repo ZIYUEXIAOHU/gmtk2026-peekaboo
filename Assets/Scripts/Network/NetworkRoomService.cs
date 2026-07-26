@@ -130,14 +130,14 @@ public class NetworkRoomService : MonoBehaviour, IRoomStateReadonly, IRoomComman
 
         if (discovery == null)
         {
-            RaiseError(RoomOp.Refresh, RoomErrorReason.ConnectionFailed, "ManualDiscovery 未找到");
+            RaiseError(RoomOp.Refresh, RoomErrorReason.ConnectionFailed, "ManualDiscovery not found");
             return;
         }
 
         discovery.StopListening();
         if (!discovery.StartListening())
         {
-            RaiseError(RoomOp.Refresh, RoomErrorReason.ConnectionFailed, "局域网监听端口启动失败");
+            RaiseError(RoomOp.Refresh, RoomErrorReason.ConnectionFailed, "Failed to start LAN listen port");
         }
     }
 
@@ -148,14 +148,14 @@ public class NetworkRoomService : MonoBehaviour, IRoomStateReadonly, IRoomComman
         if (ConnectionState != RoomConnectionState.Disconnected &&
             ConnectionState != RoomConnectionState.Failed)
         {
-            RaiseError(RoomOp.Create, RoomErrorReason.AlreadyInRoom, $"当前状态 {ConnectionState} 下不允许创建房间");
+            RaiseError(RoomOp.Create, RoomErrorReason.AlreadyInRoom, $"Cannot create room while {ConnectionState}");
             return;
         }
 
         if (networkManager == null)
         {
             SetConnectionState(RoomConnectionState.Failed);
-            RaiseError(RoomOp.Create, RoomErrorReason.ConnectionFailed, "CustomNetworkManager 未找到");
+            RaiseError(RoomOp.Create, RoomErrorReason.ConnectionFailed, "CustomNetworkManager not found");
             return;
         }
 
@@ -171,7 +171,7 @@ public class NetworkRoomService : MonoBehaviour, IRoomStateReadonly, IRoomComman
 
         try
         {
-            string finalName = string.IsNullOrWhiteSpace(roomName) ? "躲猫猫房间" : roomName;
+            string finalName = string.IsNullOrWhiteSpace(roomName) ? "Peekaboo Room" : roomName;
             // 与 ManualDiscovery.BroadcastData 共用同一份 PlayerPrefs 房间名，
             // 兼容旧 CreateRoomController 的直接调用路径。
             PlayerPrefs.SetString("RoomName", finalName);
@@ -193,7 +193,7 @@ public class NetworkRoomService : MonoBehaviour, IRoomStateReadonly, IRoomComman
         {
             _pendingOp = RoomOp.Unknown;
             SetConnectionState(RoomConnectionState.Failed);
-            RaiseError(RoomOp.Create, RoomErrorReason.ConnectionFailed, "StartHost 后 NetworkServer 未激活");
+            RaiseError(RoomOp.Create, RoomErrorReason.ConnectionFailed, "NetworkServer not active after StartHost");
             return;
         }
 
@@ -212,20 +212,20 @@ public class NetworkRoomService : MonoBehaviour, IRoomStateReadonly, IRoomComman
         if (ConnectionState != RoomConnectionState.Disconnected &&
             ConnectionState != RoomConnectionState.Failed)
         {
-            RaiseError(RoomOp.Join, RoomErrorReason.AlreadyInRoom, $"当前状态 {ConnectionState} 下不允许加入房间");
+            RaiseError(RoomOp.Join, RoomErrorReason.AlreadyInRoom, $"Cannot join room while {ConnectionState}");
             return;
         }
 
         if (networkManager == null)
         {
             SetConnectionState(RoomConnectionState.Failed);
-            RaiseError(RoomOp.Join, RoomErrorReason.ConnectionFailed, "CustomNetworkManager 未找到");
+            RaiseError(RoomOp.Join, RoomErrorReason.ConnectionFailed, "CustomNetworkManager not found");
             return;
         }
 
         if (!TryParseServerId(serverId, out string ip, out int port))
         {
-            RaiseError(RoomOp.Join, RoomErrorReason.RoomNotFound, $"无法解析 serverId：{serverId}");
+            RaiseError(RoomOp.Join, RoomErrorReason.RoomNotFound, $"Cannot parse serverId: {serverId}");
             return;
         }
 
@@ -233,7 +233,7 @@ public class NetworkRoomService : MonoBehaviour, IRoomStateReadonly, IRoomComman
             room.currentPlayers >= room.maxPlayers &&
             room.maxPlayers > 0)
         {
-            RaiseError(RoomOp.Join, RoomErrorReason.RoomFull, $"房间已满：{serverId}");
+            RaiseError(RoomOp.Join, RoomErrorReason.RoomFull, $"Room is full: {serverId}");
             return;
         }
 
@@ -249,7 +249,7 @@ public class NetworkRoomService : MonoBehaviour, IRoomStateReadonly, IRoomComman
     {
         if (role != PlayerRole.Hider && role != PlayerRole.Seeker)
         {
-            RaiseError(RoomOp.Find, RoomErrorReason.Unknown, $"非法身份：{role}");
+            RaiseError(RoomOp.Find, RoomErrorReason.Unknown, $"Invalid role: {role}");
             return false;
         }
 
@@ -284,13 +284,13 @@ public class NetworkRoomService : MonoBehaviour, IRoomStateReadonly, IRoomComman
 
         if (!FoundRoom.HasValue || string.IsNullOrEmpty(FoundRoom.Value.serverId))
         {
-            RaiseError(RoomOp.Join, RoomErrorReason.RoomNotFound, "尚未找到房间，请先 FindRoomByCode");
+            RaiseError(RoomOp.Join, RoomErrorReason.RoomNotFound, "No room found yet; call FindRoomByCode first");
             return;
         }
 
         if (PreferredRole == PlayerRole.None)
         {
-            RaiseError(RoomOp.Join, RoomErrorReason.RoleNotSelected, "请先选择身份");
+            RaiseError(RoomOp.Join, RoomErrorReason.RoleNotSelected, "Please select a role first");
             return;
         }
 
@@ -308,27 +308,27 @@ public class NetworkRoomService : MonoBehaviour, IRoomStateReadonly, IRoomComman
 
         if (found.currentPlayers >= found.maxPlayers && found.maxPlayers > 0)
         {
-            RaiseError(RoomOp.Join, RoomErrorReason.RoomFull, $"房间已满：{found.serverId}");
+            RaiseError(RoomOp.Join, RoomErrorReason.RoomFull, $"Room is full: {found.serverId}");
             return;
         }
 
         if (ConnectionState != RoomConnectionState.Disconnected &&
             ConnectionState != RoomConnectionState.Failed)
         {
-            RaiseError(RoomOp.Join, RoomErrorReason.AlreadyInRoom, $"当前状态 {ConnectionState} 下不允许加入房间");
+            RaiseError(RoomOp.Join, RoomErrorReason.AlreadyInRoom, $"Cannot join room while {ConnectionState}");
             return;
         }
 
         if (networkManager == null)
         {
             SetConnectionState(RoomConnectionState.Failed);
-            RaiseError(RoomOp.Join, RoomErrorReason.ConnectionFailed, "CustomNetworkManager 未找到");
+            RaiseError(RoomOp.Join, RoomErrorReason.ConnectionFailed, "CustomNetworkManager not found");
             return;
         }
 
         if (!TryParseServerId(found.serverId, out string ip, out int port))
         {
-            RaiseError(RoomOp.Join, RoomErrorReason.RoomNotFound, $"无法解析 serverId：{found.serverId}");
+            RaiseError(RoomOp.Join, RoomErrorReason.RoomNotFound, $"Cannot parse serverId: {found.serverId}");
             return;
         }
 
@@ -358,28 +358,28 @@ public class NetworkRoomService : MonoBehaviour, IRoomStateReadonly, IRoomComman
             ConnectionState != RoomConnectionState.Failed)
         {
             RaiseError(findOnly ? RoomOp.Find : RoomOp.Join, RoomErrorReason.AlreadyInRoom,
-                $"当前状态 {ConnectionState} 下不允许{(findOnly ? "寻找" : "加入")}房间");
+                $"Cannot {(findOnly ? "find" : "join")} room while {ConnectionState}");
             return;
         }
 
         if (!RoomCodeUtil.TryNormalize(roomCode, out string normalized))
         {
             RaiseError(findOnly ? RoomOp.Find : RoomOp.Join, RoomErrorReason.RoomNotFound,
-                $"无效房间短码：{roomCode}");
+                $"Invalid room code: {roomCode}");
             return;
         }
 
         if (discovery == null)
         {
             RaiseError(findOnly ? RoomOp.Find : RoomOp.Join, RoomErrorReason.ConnectionFailed,
-                "ManualDiscovery 未找到");
+                "ManualDiscovery not found");
             return;
         }
 
         if (!findOnly && networkManager == null)
         {
             SetConnectionState(RoomConnectionState.Failed);
-            RaiseError(RoomOp.Join, RoomErrorReason.ConnectionFailed, "CustomNetworkManager 未找到");
+            RaiseError(RoomOp.Join, RoomErrorReason.ConnectionFailed, "CustomNetworkManager not found");
             return;
         }
 
@@ -411,7 +411,7 @@ public class NetworkRoomService : MonoBehaviour, IRoomStateReadonly, IRoomComman
             if (!findOnly)
                 SetConnectionState(RoomConnectionState.Failed);
             RaiseError(findOnly ? RoomOp.Find : RoomOp.Join, RoomErrorReason.ConnectionFailed,
-                "局域网监听端口启动失败");
+                "Failed to start LAN listen port");
             return;
         }
 
@@ -498,7 +498,7 @@ public class NetworkRoomService : MonoBehaviour, IRoomStateReadonly, IRoomComman
             _pendingJoinRoomCode = null;
             CurrentRoomCode = string.Empty;
             SetConnectionState(RoomConnectionState.Failed);
-            RaiseError(op, RoomErrorReason.ConnectionFailed, "连接过程中断开");
+            RaiseError(op, RoomErrorReason.ConnectionFailed, "Disconnected while connecting");
             return;
         }
 
@@ -633,7 +633,7 @@ public class NetworkRoomService : MonoBehaviour, IRoomStateReadonly, IRoomComman
         _pendingJoinRoomCode = null;
         CurrentRoomCode = string.Empty;
         SetConnectionState(RoomConnectionState.Failed);
-        RaiseError(RoomOp.Join, RoomErrorReason.Timeout, "连接超时");
+        RaiseError(RoomOp.Join, RoomErrorReason.Timeout, "Connection timed out");
 
         if (networkManager != null && NetworkClient.active)
             networkManager.StopClient();
@@ -661,7 +661,7 @@ public class NetworkRoomService : MonoBehaviour, IRoomStateReadonly, IRoomComman
         }
 
         RaiseError(findOnly ? RoomOp.Find : RoomOp.Join, RoomErrorReason.Timeout,
-            $"未找到短码对应房间：{code}");
+            $"No room found for code: {code}");
         Debug.LogWarning($"[NetworkRoomService] 按短码寻找超时：{code}");
     }
 
@@ -746,7 +746,7 @@ public class NetworkRoomService : MonoBehaviour, IRoomStateReadonly, IRoomComman
             _pendingOp = RoomOp.Unknown;
             CurrentRoomCode = string.Empty;
             SetConnectionState(RoomConnectionState.Failed);
-            RaiseError(RoomOp.Join, RoomErrorReason.RoomFull, $"房间已满：{data.serverId}");
+            RaiseError(RoomOp.Join, RoomErrorReason.RoomFull, $"Room is full: {data.serverId}");
             return;
         }
 
@@ -756,7 +756,7 @@ public class NetworkRoomService : MonoBehaviour, IRoomStateReadonly, IRoomComman
             _pendingOp = RoomOp.Unknown;
             CurrentRoomCode = string.Empty;
             SetConnectionState(RoomConnectionState.Failed);
-            RaiseError(RoomOp.Join, RoomErrorReason.RoomNotFound, $"无法解析 serverId：{data.serverId}");
+            RaiseError(RoomOp.Join, RoomErrorReason.RoomNotFound, $"Cannot parse serverId: {data.serverId}");
             return;
         }
 

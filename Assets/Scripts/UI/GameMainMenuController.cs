@@ -92,11 +92,11 @@ public class GameMainMenuController : MonoBehaviour
         
         string statusMsg = state switch
         {
-            RoomConnectionState.Disconnected => "📋 已断开连接",
-            RoomConnectionState.Connecting => "⏳ 正在连接...",
-            RoomConnectionState.InRoom => "✅ 已加入房间",
-            RoomConnectionState.Failed => "❌ 连接失败，请重试",
-            _ => "📋 已断开连接"
+            RoomConnectionState.Disconnected => "📋 Disconnected",
+            RoomConnectionState.Connecting => "⏳ Connecting...",
+            RoomConnectionState.InRoom => "✅ Joined room",
+            RoomConnectionState.Failed => "❌ Connection failed, please retry",
+            _ => "📋 Disconnected"
         };
         
         if (statusText != null)
@@ -116,12 +116,12 @@ public class GameMainMenuController : MonoBehaviour
     {
         string errorMsg = error.reason switch
         {
-            RoomErrorReason.Timeout => "⏰ 操作超时",
-            RoomErrorReason.RoomNotFound => "🔍 房间不存在",
-            RoomErrorReason.RoomFull => "👥 房间已满",
-            RoomErrorReason.ConnectionFailed => "🔌 网络连接失败",
-            RoomErrorReason.AlreadyInRoom => "⚠️ 已在房间中",
-            _ => $"❌ 操作失败：{error.message}"
+            RoomErrorReason.Timeout => "⏰ Operation timed out",
+            RoomErrorReason.RoomNotFound => "🔍 Room not found",
+            RoomErrorReason.RoomFull => "👥 Room is full",
+            RoomErrorReason.ConnectionFailed => "🔌 Network connection failed",
+            RoomErrorReason.AlreadyInRoom => "⚠️ Already in a room",
+            _ => $"❌ Operation failed: {error.message}"
         };
         
         if (statusText != null)
@@ -152,7 +152,7 @@ public class GameMainMenuController : MonoBehaviour
         settingsPanel.SetActive(false);
         
         if (statusText != null)
-            statusText.text = "🎮 欢迎来到躲猫猫联机游戏！";
+            statusText.text = "🎮 Welcome to Peekaboo multiplayer!";
     }
     
     // ==================== 打开加入游戏面板 ====================
@@ -163,7 +163,7 @@ public class GameMainMenuController : MonoBehaviour
         settingsPanel.SetActive(false);
         
         if (statusText != null)
-            statusText.text = "📋 选择房间加入，或点击右侧「创建游戏」";
+            statusText.text = "📋 Select a room to join, or tap Create Game on the right";
         
         if (GameContract.IsRoomBound)
         {
@@ -187,7 +187,7 @@ public class GameMainMenuController : MonoBehaviour
         settingsPanel.SetActive(true);
         
         if (statusText != null)
-            statusText.text = "⚙️ 游戏设置";
+            statusText.text = "⚙️ Game Settings";
     }
     
     // ==================== 返回主菜单 ====================
