@@ -56,10 +56,10 @@ public class RoomItemUI : MonoBehaviour
             roomNameText.text = roomName;
         
         if (hostNameText != null)
-            hostNameText.text = $"主机: {hostName}";
+            hostNameText.text = $"Host: {hostName}";
         
         if (playerCountText != null)
-            playerCountText.text = $"{currentPlayers}/{maxPlayers}人";
+            playerCountText.text = $"{currentPlayers}/{maxPlayers} players";
         
         UpdateStatus(status);
     }
@@ -82,28 +82,28 @@ public class RoomItemUI : MonoBehaviour
         switch (status)
         {
             case RoomStatus.Idle:
-                statusText = "🟢 空闲中";
+                statusText = "🟢 Idle";
                 statusColor = idleColor;
                 if (joinBtnText != null)
-                    joinBtnText.text = "加入";
+                    joinBtnText.text = "Join";
                 if (joinBtn != null)
                     joinBtn.interactable = true;
                 break;
                 
             case RoomStatus.Playing:
-                statusText = "🟡 游戏中";
+                statusText = "🟡 In Game";
                 statusColor = playingColor;
                 if (joinBtnText != null)
-                    joinBtnText.text = "观战";
+                    joinBtnText.text = "Spectate";
                 if (joinBtn != null)
                     joinBtn.interactable = true;
                 break;
                 
             case RoomStatus.Settling:
-                statusText = "🔴 结算中";
+                statusText = "🔴 Settling";
                 statusColor = settlingColor;
                 if (joinBtnText != null)
-                    joinBtnText.text = "观战";
+                    joinBtnText.text = "Spectate";
                 if (joinBtn != null)
                     joinBtn.interactable = true;
                 break;

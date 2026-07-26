@@ -30,6 +30,14 @@ public class OpeningCameraSequence : MonoBehaviour
     {
         mainCamera = Camera.main;
         if (mainCamera == null) return;
+
+        // 本地已有玩家名时跳过开场聚焦（仅首次引导输入名字时播放）
+        string localName = PlayerPrefs.GetString(GameConstants.PlayerNamePrefsKey, string.Empty);
+        if (!string.IsNullOrWhiteSpace(localName))
+        {
+            Debug.Log($"📷 本地已有玩家名「{localName}」，跳过开场摄像头聚焦");
+            return;
+        }
         
         // 如果没有指定聚焦点，自动创建一个
         if (focusTarget == null)

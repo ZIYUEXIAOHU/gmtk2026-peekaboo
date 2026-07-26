@@ -3,6 +3,7 @@ using UnityEngine.UI;
 using TMPro;
 using System.Collections;
 using System.Collections.Generic;
+using Mirror;
 
 public class HiderUIController : MonoBehaviour
 {
@@ -47,6 +48,8 @@ public class HiderUIController : MonoBehaviour
     private HiderState lastHiderState = (HiderState)(-1);
     private bool hasInitializedUI = false;
     private bool isSubscribed = false;
+    /// <summary>本地躲藏者无敌结束时刻（NetworkTime.time）；0 = 无。</summary>
+    private double localInvulnerableUntil;
     
     void Start()
     {
@@ -61,7 +64,7 @@ public class HiderUIController : MonoBehaviour
             placeHintText.gameObject.SetActive(true);
         
         InitializeInventory();
-        UpdateInventoryCount();
+        UpdateInventoryCount(0);
         
         if (observerUI != null)
             observerUI.SetActive(false);
@@ -159,6 +162,9 @@ public class HiderUIController : MonoBehaviour
         if (local == null || local.Role != PlayerRole.Hider)
             return;
 
+        // 无敌剩余优先；否则轮询 State.NextTransformTimeLeft
+        UpdateInvulnerableOrTransformTimer();
+
         // ===== 只更新数据，不控制激活状态 =====
         // 激活状态由 LobbyRoomController.UpdateRoleUI() 控制
         
@@ -171,6 +177,40 @@ public class HiderUIController : MonoBehaviour
         hasInitializedUI = true;
         
         UpdateHiderUI(local, GameContract.State.Players);
+    }
+
+    void UpdateInvulnerableOrTransformTimer()
+    {
+        if (isObserving || transformTimer == null)
+            return;
+
+        if (localInvulnerableUntil > 0)
+        {
+            float invulnLeft = (float)(localInvulnerableUntil - NetworkTime.time);
+            if (invulnLeft > 0f)
+            {
+                transformTimer.text = $"⏳ Invincible: {Mathf.CeilToInt(invulnLeft)}s";
+                transformTimer.color = invisibleColor;
+                transformTimer.gameObject.SetActive(true);
+                return;
+            }
+            localInvulnerableUntil = 0;
+        }
+
+        if (!GameContract.IsBound || GameContract.State == null)
+        {
+            transformTimer.gameObject.SetActive(false);
+            return;
+        }
+
+        float transformLeft = GameContract.State.NextTransformTimeLeft;
+        if (transformLeft > 0f)
+        {
+            UpdateTransformTimer(transformLeft);
+            return;
+        }
+
+        transformTimer.gameObject.SetActive(false);
     }
 
     // ==================== 延迟初始化 ====================
@@ -262,8 +302,8 @@ public class HiderUIController : MonoBehaviour
         GameObject slot = Instantiate(itemSlotPrefab, inventoryParent);
         slot.name = $"ItemSlot_{index}";
         
-        Image icon = slot.transform.Find("ItemIcon")?.GetComponent<Image>();
-        Image highlight = slot.transform.Find("Highlight")?.GetComponent<Image>();
+        Image icon = FindChildImage(slot.transform, "ItemIcon");
+        Image highlight = FindChildImage(slot.transform, "Highlight");
         
         GameObject usedBg = slot.transform.Find("UsedBg")?.gameObject;
         GameObject emptyBg = slot.transform.Find("EmptyBg")?.gameObject;
@@ -299,6 +339,29 @@ public class HiderUIController : MonoBehaviour
         
         return slot;
     }
+
+    /// <summary>
+    /// Find child Image by name; also matches names with leading/trailing whitespace
+    /// so older prefab variants like " Highlight" still bind.
+    /// </summary>
+    static Image FindChildImage(Transform parent, string childName)
+    {
+        if (parent == null || string.IsNullOrEmpty(childName))
+            return null;
+
+        Transform exact = parent.Find(childName);
+        if (exact != null)
+            return exact.GetComponent<Image>();
+
+        for (int i = 0; i < parent.childCount; i++)
+        {
+            Transform child = parent.GetChild(i);
+            if (child != null && child.name.Trim() == childName)
+                return child.GetComponent<Image>();
+        }
+
+        return null;
+    }
     
     void EnsureSlots(int count)
     {
@@ -308,20 +371,32 @@ public class HiderUIController : MonoBehaviour
         }
     }
     
-    void UpdateInventoryCount()
+    void UpdateInventoryCount(int itemCount)
     {
         if (inventoryCountText == null) return;
-        
-        int activeSlotCount = 0;
-        foreach (Transform child in inventoryParent)
+        inventoryCountText.text = $"{itemCount}/{maxSlots}";
+    }
+
+    Sprite ResolveItemIcon(int itemId)
+    {
+        if (itemTable == null || !itemTable.IsValid(itemId))
+            return null;
+
+        ItemTable.Entry entry = itemTable.Get(itemId);
+        if (entry == null)
+            return null;
+
+        if (entry.icon != null)
+            return entry.icon;
+
+        if (entry.prefab != null)
         {
-            if (child.gameObject.activeSelf && child.name.StartsWith("ItemSlot_"))
-            {
-                activeSlotCount++;
-            }
+            var sr = entry.prefab.GetComponent<SpriteRenderer>();
+            if (sr != null)
+                return sr.sprite;
         }
-        
-        inventoryCountText.text = $"{activeSlotCount}/{maxSlots}";
+
+        return null;
     }
     
     // ==================== 物品栏更新 ====================
@@ -332,7 +407,7 @@ public class HiderUIController : MonoBehaviour
         
         int itemCount = itemQueue.Count;
         
-        EnsureSlots(itemCount);
+        EnsureSlots(Mathf.Max(itemCount, maxSlots));
         
         for (int i = 0; i < slotObjects.Count; i++)
         {
@@ -347,36 +422,32 @@ public class HiderUIController : MonoBehaviour
                 if (i < emptyBgs.Count && emptyBgs[i] != null)
                     emptyBgs[i].SetActive(false);
                 
-                Image icon = slotIcons[i];
-                Image highlight = slotHighlights[i];
+                Image icon = i < slotIcons.Count ? slotIcons[i] : null;
+                Image highlight = i < slotHighlights.Count ? slotHighlights[i] : null;
                 
                 int itemId = itemQueue[i];
-                
-                if (itemTable != null && itemTable.IsValid(itemId))
+                Sprite sprite = ResolveItemIcon(itemId);
+
+                if (icon != null)
                 {
-                    ItemTable.Entry entry = itemTable.Get(itemId);
-                    if (entry != null && entry.icon != null)
+                    if (sprite != null)
                     {
-                        icon.sprite = entry.icon;
+                        icon.sprite = sprite;
                         icon.color = Color.white;
                     }
                     else
                     {
+                        icon.sprite = null;
                         icon.color = new Color(1, 1, 1, 0.3f);
                     }
                 }
-                else
-                {
-                    icon.color = new Color(1, 1, 1, 0.3f);
-                }
                 
                 if (highlight != null)
-                {
                     highlight.gameObject.SetActive(i == 0);
-                }
             }
-            else
+            else if (i < maxSlots)
             {
+                // Keep empty capacity frames visible; count uses itemQueue.Count only.
                 slot.SetActive(true);
                 
                 if (i < usedBgs.Count && usedBgs[i] != null)
@@ -384,21 +455,23 @@ public class HiderUIController : MonoBehaviour
                 if (i < emptyBgs.Count && emptyBgs[i] != null)
                     emptyBgs[i].SetActive(true);
                 
-                Image icon = slotIcons[i];
+                Image icon = i < slotIcons.Count ? slotIcons[i] : null;
                 if (icon != null)
                 {
                     icon.sprite = null;
-                    icon.color = new Color(1, 1, 1, 0.1f);
+                    icon.color = new Color(1, 1, 1, 0f);
                 }
                 
                 if (i < slotHighlights.Count && slotHighlights[i] != null)
-                {
                     slotHighlights[i].gameObject.SetActive(false);
-                }
+            }
+            else
+            {
+                slot.SetActive(false);
             }
         }
         
-        UpdateInventoryCount();
+        UpdateInventoryCount(itemCount);
     }
     
     // ==================== Hider UI 更新 ====================
@@ -481,8 +554,8 @@ public class HiderUIController : MonoBehaviour
             placeHintText.gameObject.SetActive(true);
         if (inventoryParent != null)
             inventoryParent.gameObject.SetActive(true);
-        if (transformTimer != null)
-            transformTimer.gameObject.SetActive(true);
+        // transformTimer 可见性由 UpdateInvulnerableOrTransformTimer 控制（无 NextTransformTimeLeft 时默认隐藏）
+        UpdateInvulnerableOrTransformTimer();
     }
     
     void ShowObserverUI(bool show)
@@ -549,15 +622,15 @@ public class HiderUIController : MonoBehaviour
         switch (state)
         {
             case HiderState.Disguised:
-                stateText = "🟢 伪装中";
+                stateText = "🟢 Disguised";
                 stateColor = disguisedColor;
                 break;
             case HiderState.Invisible:
-                stateText = "🟡 隐身无敌";
+                stateText = "🟡 Invisible";
                 stateColor = invisibleColor;
                 break;
             case HiderState.Ghost:
-                stateText = "🔴 鬼魂状态";
+                stateText = "🔴 Ghost";
                 stateColor = ghostColor;
                 break;
             case HiderState.Captured:
@@ -565,7 +638,7 @@ public class HiderUIController : MonoBehaviour
                 stateColor = capturedColor;
                 break;
             default:
-                stateText = "🟢 伪装中";
+                stateText = "🟢 Disguised";
                 stateColor = disguisedColor;
                 break;
         }
@@ -575,6 +648,7 @@ public class HiderUIController : MonoBehaviour
         disguiseStatusIcon.color = stateColor;
     }
     
+    /// <summary>显示距下次变身剩余秒数（由 UpdateInvulnerableOrTransformTimer 从 State.NextTransformTimeLeft 驱动）。</summary>
     public void UpdateTransformTimer(float timeLeft)
     {
         if (transformTimer == null) return;
@@ -587,13 +661,13 @@ public class HiderUIController : MonoBehaviour
         
         if (timeLeft > 0)
         {
-            transformTimer.text = $"⏳ 变身: {Mathf.CeilToInt(timeLeft)}s";
+            transformTimer.text = $"⏳ Transform: {Mathf.CeilToInt(timeLeft)}s";
             transformTimer.color = Color.white;
             transformTimer.gameObject.SetActive(true);
         }
         else
         {
-            transformTimer.text = "⏳ 准备变身...";
+            transformTimer.text = "⏳ Ready to transform...";
             transformTimer.color = Color.yellow;
             transformTimer.gameObject.SetActive(true);
         }
@@ -612,9 +686,10 @@ public class HiderUIController : MonoBehaviour
         if (!GameContract.IsBound || GameContract.State == null) return;
         IPlayerStateReadonly local = GameContract.State.LocalPlayer;
         if (local == null || local.NetId != info.hiderNetId) return;
-        
+
+        localInvulnerableUntil = info.invulnerableUntil;
         ForceUpdateUI();
-        Debug.Log($"🔄 躲藏者变换: NetId={info.hiderNetId}, ItemId={info.newItemId}");
+        Debug.Log($"🔄 躲藏者变换: NetId={info.hiderNetId}, ItemId={info.newItemId}, invulnUntil={info.invulnerableUntil}");
     }
     
     void OnCaptured(CaptureInfo info)

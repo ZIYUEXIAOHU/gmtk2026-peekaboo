@@ -95,7 +95,16 @@ public class SeekerController : NetworkBehaviour
             {
                 GameObject go = new GameObject("GroundCheck");
                 go.transform.SetParent(transform);
-                go.transform.localPosition = new Vector3(0, -0.5f, 0);
+                BoxCollider2D col = GetComponent<BoxCollider2D>();
+                if (col != null)
+                {
+                    float bottom = col.offset.y - col.size.y * 0.5f - col.edgeRadius;
+                    go.transform.localPosition = new Vector3(col.offset.x, bottom - 0.02f, 0f);
+                }
+                else
+                {
+                    go.transform.localPosition = new Vector3(0, -0.5f, 0);
+                }
                 groundCheckPoint = go.transform;
             }
         }

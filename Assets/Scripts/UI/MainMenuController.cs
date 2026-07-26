@@ -8,7 +8,6 @@ using Mirror;
 public class MainMenuController : MonoBehaviour
 {
     public const string PrefPreferredRole = "PreferredRole";
-    public const string PrefPlayerName = "PlayerName";  // 玩家名称保存键
 
     [Header("主菜单")]
     public GameObject mainMenuPanel;  // GameMenuPanel
@@ -21,6 +20,8 @@ public class MainMenuController : MonoBehaviour
 
     [Header("玩家名称")]
     public TMP_InputField playerNameInput;  // 玩家名称输入框（放在主界面）
+    [Tooltip("写名字面板；为空则从 playerNameInput 向上查找 NamePanel")]
+    public GameObject namePanel;
     
     [Header("加入游戏面板")]
     public GameObject joinPanel;    // 加入面板
@@ -148,41 +149,26 @@ public class MainMenuController : MonoBehaviour
     
     void LoadPlayerName()
     {
-        if (PlayerPrefs.HasKey(PrefPlayerName))
-        {
-            currentPlayerName = PlayerPrefs.GetString(PrefPlayerName);
-        }
-        else
-        {
-            // ===== 默认名称：使用系统用户名 + 随机数字 =====
-            string systemName = System.Environment.UserName;
-            if (string.IsNullOrEmpty(systemName))
-                systemName = "Player";
-            currentPlayerName = $"{systemName}{Random.Range(100, 999)}";
-        }
-        
+        string raw = PlayerPrefs.GetString(GameConstants.PlayerNamePrefsKey, string.Empty);
+        currentPlayerName = string.IsNullOrWhiteSpace(raw)
+            ? GameConstants.DefaultPlayerName
+            : RoomPlayer.SanitizePlayerName(raw);
+
         if (playerNameInput != null)
             playerNameInput.text = currentPlayerName;
-        
+
         Debug.Log($"📛 玩家名称已加载: {currentPlayerName}");
     }
 
     void OnPlayerNameChanged(string newName)
     {
-        if (string.IsNullOrWhiteSpace(newName))
-        {
-            currentPlayerName = $"Player{Random.Range(100, 999)}";
-            if (playerNameInput != null)
-                playerNameInput.text = currentPlayerName;
-        }
-        else
-        {
-            currentPlayerName = newName.Trim();
-        }
-        
-        PlayerPrefs.SetString(PrefPlayerName, currentPlayerName);
+        currentPlayerName = RoomPlayer.SanitizePlayerName(newName);
+        if (playerNameInput != null)
+            playerNameInput.text = currentPlayerName;
+
+        PlayerPrefs.SetString(GameConstants.PlayerNamePrefsKey, currentPlayerName);
         PlayerPrefs.Save();
-        
+
         Debug.Log($"📛 玩家名称已更新: {currentPlayerName}");
     }
 
@@ -249,7 +235,33 @@ public class MainMenuController : MonoBehaviour
         if (roleSelectPanel == null && hiderBtn != null && hiderBtn.transform.parent != null)
             roleSelectPanel = hiderBtn.transform.parent.gameObject;
 
+        EnsureNamePanelRef();
         SetRoleSelectVisible(false);
+        SetNamePanelVisible(true);
+    }
+
+    void EnsureNamePanelRef()
+    {
+        if (namePanel != null) return;
+        if (playerNameInput == null) return;
+
+        Transform t = playerNameInput.transform;
+        while (t != null)
+        {
+            if (t.name == "NamePanel")
+            {
+                namePanel = t.gameObject;
+                return;
+            }
+            t = t.parent;
+        }
+    }
+
+    void SetNamePanelVisible(bool visible)
+    {
+        EnsureNamePanelRef();
+        if (namePanel != null)
+            namePanel.SetActive(visible);
     }
 
     void SetRoleSelectVisible(bool visible)
@@ -258,9 +270,26 @@ public class MainMenuController : MonoBehaviour
         roleSelectPanel.SetActive(visible);
         if (visible)
         {
+            // 选角时藏起写名字，并用独立 Canvas 强制盖在最上层
+            SetNamePanelVisible(false);
+            EnsureRoleSelectSortsOnTop();
             roleSelectPanel.transform.SetAsLastSibling();
             Debug.Log("[MainMenu] 身份选择面板已显示");
         }
+    }
+
+    void EnsureRoleSelectSortsOnTop()
+    {
+        if (roleSelectPanel == null) return;
+
+        Canvas canvas = roleSelectPanel.GetComponent<Canvas>();
+        if (canvas == null)
+            canvas = roleSelectPanel.AddComponent<Canvas>();
+        canvas.overrideSorting = true;
+        canvas.sortingOrder = 100;
+
+        if (roleSelectPanel.GetComponent<GraphicRaycaster>() == null)
+            roleSelectPanel.AddComponent<GraphicRaycaster>();
     }
 
     void WireRoleButton(Button btn, PlayerRole role)
@@ -320,11 +349,11 @@ public class MainMenuController : MonoBehaviour
         
         string statusMsg = state switch
         {
-            RoomConnectionState.Disconnected => "📋 已断开连接",
-            RoomConnectionState.Connecting => "⏳ 正在连接...",
-            RoomConnectionState.InRoom => "✅ 已加入房间",
-            RoomConnectionState.Failed => "❌ 连接失败，请重试",
-            _ => "📋 已断开连接"
+            RoomConnectionState.Disconnected => "📋 Disconnected",
+            RoomConnectionState.Connecting => "⏳ Connecting...",
+            RoomConnectionState.InRoom => "✅ Joined room",
+            RoomConnectionState.Failed => "❌ Connection failed, please retry",
+            _ => "📋 Disconnected"
         };
         
         if (statusText != null)
@@ -334,7 +363,7 @@ public class MainMenuController : MonoBehaviour
         {
             string code = GameContract.RoomState.CurrentRoomCode;
             if (!string.IsNullOrEmpty(code) && statusText != null)
-                statusText.text = $"✅ 已在房间，短码：{code}";
+                statusText.text = $"✅ In room, code: {code}";
 
             if (_waitingCreateEnter)
                 StartCoroutine(DelayedEnterGameScene());
@@ -392,9 +421,9 @@ public class MainMenuController : MonoBehaviour
         if (statusText != null)
         {
             statusText.text =
-                $"✅ 找到房间「{info.roomName}」 短码 {info.roomCode}\n" +
-                $"请点 HIDER / HUNTER（躲藏 {projected.hiderCount}/{projected.hiderMax}，" +
-                $"抓捕 {projected.seekerCount}/{projected.seekerMax}）";
+                $"✅ Found room \"{info.roomName}\"  code {info.roomCode}\n" +
+                $"Tap HIDER / HUNTER (hiders {projected.hiderCount}/{projected.hiderMax}, " +
+                $"hunters {projected.seekerCount}/{projected.seekerMax})";
         }
     }
     
@@ -405,16 +434,16 @@ public class MainMenuController : MonoBehaviour
 
         string errorMsg = error.reason switch
         {
-            RoomErrorReason.Timeout => "⏰ 操作超时",
-            RoomErrorReason.RoomNotFound => "🔍 房间不存在",
-            RoomErrorReason.RoomFull => "👥 房间已满",
-            RoomErrorReason.ConnectionFailed => "🔌 网络连接失败",
-            RoomErrorReason.AlreadyInRoom => "⚠️ 已在房间中",
+            RoomErrorReason.Timeout => "⏰ Operation timed out",
+            RoomErrorReason.RoomNotFound => "🔍 Room not found",
+            RoomErrorReason.RoomFull => "👥 Room is full",
+            RoomErrorReason.ConnectionFailed => "🔌 Network connection failed",
+            RoomErrorReason.AlreadyInRoom => "⚠️ Already in a room",
             RoomErrorReason.SlotFull => error.message == "Seeker"
                 ? "⚠️ SEEKER SLOT FULL!"
                 : "⚠️ HIDER SLOT FULL!",
-            RoomErrorReason.RoleNotSelected => "⚠️ 请先选择身份",
-            _ => $"❌ 操作失败：{error.message}"
+            RoomErrorReason.RoleNotSelected => "⚠️ Please select a role first",
+            _ => $"❌ Operation failed: {error.message}"
         };
         
         if (statusText != null)
@@ -451,9 +480,10 @@ public class MainMenuController : MonoBehaviour
             mainMenuPanel.SetActive(true);
         
         if (statusText != null)
-            statusText.text = "🎮 欢迎来到躲猫猫！";
+            statusText.text = "🎮 Welcome to Peekaboo!";
 
         SetRoleSelectVisible(false);
+        SetNamePanelVisible(true);
     }
     
     // ==================== 加入游戏 ====================
@@ -468,9 +498,11 @@ public class MainMenuController : MonoBehaviour
         
         if (mainMenuPanel != null)
             mainMenuPanel.SetActive(false);
+
+        SetNamePanelVisible(false);
         
         if (statusText != null)
-            statusText.text = "📋 输入房间短码，点 JOIN 后再选身份";
+            statusText.text = "📋 Enter room code, tap JOIN, then select a role";
 
         SetRoleSelectVisible(false);
         RefreshJoinRoleButtons(default);
@@ -493,7 +525,7 @@ public class MainMenuController : MonoBehaviour
     {
         if (!GameContract.IsRoomBound)
         {
-            if (statusText != null) statusText.text = "❌ 房间服务未就绪";
+            if (statusText != null) statusText.text = "❌ Room service not ready";
             return;
         }
 
@@ -506,7 +538,7 @@ public class MainMenuController : MonoBehaviour
         if (GameContract.RoomState.PreferredRole == PlayerRole.None)
         {
             ShowJoinRoleSelect();
-            if (statusText != null) statusText.text = "⚠️ 请先点 HIDER 或 HUNTER";
+            if (statusText != null) statusText.text = "⚠️ Please tap HIDER or HUNTER first";
             return;
         }
 
@@ -519,7 +551,7 @@ public class MainMenuController : MonoBehaviour
         if (!GameContract.RoomState.FoundRoom.HasValue) return;
         if (GameContract.RoomState.PreferredRole == PlayerRole.None) return;
 
-        if (statusText != null) statusText.text = "⏳ 正在加入房间...";
+        if (statusText != null) statusText.text = "⏳ Joining room...";
         GameContract.RoomCommands.JoinFoundRoom();
     }
 
@@ -527,18 +559,18 @@ public class MainMenuController : MonoBehaviour
     {
         if (!GameContract.IsRoomBound)
         {
-            if (statusText != null) statusText.text = "❌ 房间服务未就绪";
+            if (statusText != null) statusText.text = "❌ Room service not ready";
             return;
         }
 
         string code = roomCodeInput != null ? roomCodeInput.text : string.Empty;
         if (string.IsNullOrWhiteSpace(code))
         {
-            if (statusText != null) statusText.text = "⚠️ 请输入房间短码";
+            if (statusText != null) statusText.text = "⚠️ Please enter a room code";
             return;
         }
 
-        if (statusText != null) statusText.text = $"⏳ 正在查找短码 {code.Trim().ToUpperInvariant()}...";
+        if (statusText != null) statusText.text = $"⏳ Looking up code {code.Trim().ToUpperInvariant()}...";
         GameContract.RoomCommands.FindRoomByCode(code);
         RefreshJoinRoleUiFromState();
         StartCoroutine(WatchFoundRoomAfterSearch());
@@ -576,7 +608,7 @@ public class MainMenuController : MonoBehaviour
 
         if (!GameContract.IsRoomBound)
         {
-            if (statusText != null) statusText.text = "❌ 房间服务未就绪";
+            if (statusText != null) statusText.text = "❌ Room service not ready";
             return;
         }
 
@@ -602,9 +634,9 @@ public class MainMenuController : MonoBehaviour
 
         ShowSlotFullMessage(false);
 
-        string name = role == PlayerRole.Hider ? "躲藏者" : "抓捕者";
+        string name = role == PlayerRole.Hider ? "Hider" : "Hunter";
         if (statusText != null)
-            statusText.text = $"✅ 已选择：{name}";
+            statusText.text = $"✅ Selected: {name}";
 
         if (_createPanelOpen)
             BeginCreateRoomAfterRoleSelected();
@@ -617,9 +649,9 @@ public class MainMenuController : MonoBehaviour
         if (!GameContract.IsRoomBound) return;
 
         // ===== 使用自定义玩家名称作为房间名 =====
-        string roomName = $"{currentPlayerName}的房间";
+        string roomName = $"{currentPlayerName}'s Room";
         if (statusText != null)
-            statusText.text = $"⏳ 正在创建房间「{roomName}」...";
+            statusText.text = $"⏳ Creating room \"{roomName}\"...";
 
         _waitingCreateEnter = true;
         GameContract.RoomCommands.CreateRoom(roomName, 4);
@@ -630,7 +662,7 @@ public class MainMenuController : MonoBehaviour
         _waitingCreateEnter = false;
         string code = GameContract.IsRoomBound ? GameContract.RoomState.CurrentRoomCode : string.Empty;
         if (statusText != null && !string.IsNullOrEmpty(code))
-            statusText.text = $"✅ 创建成功！短码：{code}，正在进入...";
+            statusText.text = $"✅ Created successfully! Code: {code}, entering...";
 
         yield return new WaitForSeconds(0.8f);
 
@@ -698,9 +730,11 @@ public class MainMenuController : MonoBehaviour
         
         if (mainMenuPanel != null)
             mainMenuPanel.SetActive(false);
+
+        SetNamePanelVisible(false);
         
         if (statusText != null)
-            statusText.text = "🏠 选择身份以创建房间";
+            statusText.text = "🏠 Select a role to create a room";
 
         SetRoleSelectVisible(true);
         SetRoleButtonInteractable(hiderBtn, true);
@@ -731,25 +765,25 @@ public class MainMenuController : MonoBehaviour
 
         if (netManager == null)
         {
-            SetStatus("❌ 找不到网络管理器", Color.red);
+            SetStatus("❌ Network manager not found", Color.red);
             return;
         }
 
         if (NetworkServer.active || NetworkClient.active)
         {
-            SetStatus("⚠️ 已在房间中，请先离开", Color.yellow);
+            SetStatus("⚠️ Already in a room, please leave first", Color.yellow);
             return;
         }
 
         isCreatingRoom = true;
-        string roleLabel = preferredRole == PlayerRole.Hider ? "躲藏者" : "抓捕者";
-        SetStatus($"⏳ 正在以{roleLabel}创建房间...", Color.yellow);
+        string roleLabel = preferredRole == PlayerRole.Hider ? "Hider" : "Hunter";
+        SetStatus($"⏳ Creating room as {roleLabel}...", Color.yellow);
 
         PlayerPrefs.SetInt(PrefPreferredRole, (int)preferredRole);
         PlayerPrefs.Save();
 
         // ===== 使用自定义玩家名称作为房间名 =====
-        string roomName = $"{currentPlayerName}的房间";
+        string roomName = $"{currentPlayerName}'s Room";
         int maxPlayers = Mathf.Max(2, defaultMaxPlayers);
 
         try
@@ -771,7 +805,7 @@ public class MainMenuController : MonoBehaviour
         catch (System.Exception e)
         {
             isCreatingRoom = false;
-            SetStatus($"❌ 创建失败：{e.Message}", Color.red);
+            SetStatus($"❌ Create failed: {e.Message}", Color.red);
             Debug.LogError($"[MainMenu] 创建房间异常：{e}");
             return;
         }
@@ -779,11 +813,11 @@ public class MainMenuController : MonoBehaviour
         if (!NetworkServer.active)
         {
             isCreatingRoom = false;
-            SetStatus("❌ 创建失败：服务器未启动", Color.red);
+            SetStatus("❌ Create failed: server not started", Color.red);
             return;
         }
 
-        SetStatus($"✅ 已创建，正在进入选角...", Color.green);
+        SetStatus($"✅ Created, entering role select...", Color.green);
         StartCoroutine(EnterGameSceneAfterCreate());
     }
 
@@ -795,7 +829,7 @@ public class MainMenuController : MonoBehaviour
         if (netManager == null || string.IsNullOrEmpty(netManager.gameScene))
         {
             isCreatingRoom = false;
-            SetStatus("❌ 无法进入游戏场景", Color.red);
+            SetStatus("❌ Failed to enter game scene", Color.red);
             yield break;
         }
 
@@ -823,9 +857,12 @@ public class MainMenuController : MonoBehaviour
         
         if (mainMenuPanel != null)
             mainMenuPanel.SetActive(false);
+
+        SetNamePanelVisible(false);
+        SetRoleSelectVisible(false);
         
         if (statusText != null)
-            statusText.text = "⚙️ 游戏设置";
+            statusText.text = "⚙️ Game Settings";
     }
     
     void CloseSettingsPanel()

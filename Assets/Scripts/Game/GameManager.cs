@@ -14,7 +14,7 @@ public class GameManager : NetworkBehaviour, IGameStateReadonly
     public Image hiderIcon;
     public Image seekerIcon;
     
-    [Header("结算面板")]
+    [Header("Results Panel")]
     public ResultPanelController resultPanel;
     
     [SyncVar(hook = nameof(OnStateChanged))]
@@ -43,9 +43,10 @@ public class GameManager : NetworkBehaviour, IGameStateReadonly
     private bool isRunning = false;
     private bool gameEnded = false;
     
-    // ===== 实现 IGameStateReadonly =====
+    // ===== IGameStateReadonly implementation =====
     public GamePhase Phase => phase;
     public float PhaseTimeLeft => phaseTimeLeft;
+    public float NextTransformTimeLeft => 0f;
     public int AliveHiders => aliveHiders;
     public int TotalHiders => totalHiders;
     public IPlayerStateReadonly LocalPlayer => null;
@@ -78,12 +79,12 @@ public class GameManager : NetworkBehaviour, IGameStateReadonly
             if (GameContract.IsBound)
             {
                 GameContract.Events.OnGameEnded += OnGameEnded;
-                Debug.Log("✅ GameManager 订阅 OnGameEnded 事件成功");
+                Debug.Log("✅ GameManager subscribed to OnGameEnded event successfully");
             }
         }
         catch (System.Exception e)
         {
-            Debug.LogWarning($"订阅事件失败：{e.Message}");
+            Debug.LogWarning($"Failed to subscribe to event: {e.Message}");
         }
     }
     
@@ -104,7 +105,7 @@ public class GameManager : NetworkBehaviour, IGameStateReadonly
         if (gameEnded) return;
         gameEnded = true;
         
-        Debug.Log($"🏆 游戏结算！结果: {result.result}, 存活: {result.survivors}, 用时: {result.duration}s");
+        Debug.Log($"🏆 Game results! Result: {result.result}, Survivors: {result.survivors}, Duration: {result.duration}s");
         
         if (resultPanel != null)
         {
@@ -118,7 +119,7 @@ public class GameManager : NetworkBehaviour, IGameStateReadonly
         }
         else
         {
-            Debug.LogWarning("⚠️ ResultPanel 未绑定！");
+            Debug.LogWarning("⚠️ ResultPanel is not bound!");
         }
         
         if (statusText != null)
@@ -137,12 +138,12 @@ public class GameManager : NetworkBehaviour, IGameStateReadonly
         {
             if (!GameContract.IsBound)
             {
-                Debug.Log("[GameManager] 等待契约绑定...");
+                Debug.Log("[GameManager] Waiting for contract binding...");
             }
         }
         catch (System.Exception e)
         {
-            Debug.LogWarning($"契约绑定失败：{e.Message}");
+            Debug.LogWarning($"Contract binding failed: {e.Message}");
         }
     }
     
@@ -157,7 +158,7 @@ public class GameManager : NetworkBehaviour, IGameStateReadonly
         isPracticeLobby = false;
         gameEnded = false;
         
-        RpcUpdateUI("躲藏中...", phaseTimeLeft);
+        RpcUpdateUI("Hiding...", phaseTimeLeft);
     }
     
     void Update()
@@ -175,7 +176,7 @@ public class GameManager : NetworkBehaviour, IGameStateReadonly
                 case GamePhase.Prep:
                     phase = GamePhase.Playing;
                     phaseTimeLeft = GameConstants.MatchDuration;
-                    RpcUpdateUI("搜寻中...", phaseTimeLeft);
+                    RpcUpdateUI("Seeking...", phaseTimeLeft);
                     break;
                 case GamePhase.Playing:
                     EndGame();
@@ -203,7 +204,7 @@ public class GameManager : NetworkBehaviour, IGameStateReadonly
         matchResult.survivors = alive;
         matchResult.duration = GameConstants.MatchDuration;
         
-        string result = alive > 0 ? $"躲藏者胜利！存活{alive}人" : "搜寻者胜利！";
+        string result = alive > 0 ? $"Hiders win! {alive} survived" : "Seekers win!";
         RpcUpdateUI(result, 0);
     }
     
@@ -250,10 +251,10 @@ public class GameManager : NetworkBehaviour, IGameStateReadonly
     {
         string stateName = newVal switch
         {
-            GamePhase.Prep => "⏳ 躲藏中...",
-            GamePhase.Playing => "🔍 搜寻中...",
-            GamePhase.Ended => "🏁 游戏结束！",
-            _ => "⏳ 等待开始"
+            GamePhase.Prep => "⏳ Hiding...",
+            GamePhase.Playing => "🔍 Seeking...",
+            GamePhase.Ended => "🏁 Game Over!",
+            _ => "⏳ Waiting to start"
         };
         if (statusText != null) statusText.text = stateName;
     }

@@ -72,7 +72,7 @@ public class RoomListController : MonoBehaviour
             searchConfirmBtn.onClick.AddListener(OnSearchConfirm);
         
         if (listStatusText != null)
-            listStatusText.text = "点击「刷新」搜索局域网房间";
+            listStatusText.text = "Tap Refresh to search for LAN rooms";
         
         // ===== 订阅契约事件 =====
         SubscribeRoomEvents();
@@ -114,12 +114,12 @@ public class RoomListController : MonoBehaviour
         {
             string errorMsg = error.reason switch
             {
-                RoomErrorReason.Timeout => "⏰ 操作超时",
-                RoomErrorReason.RoomNotFound => "🔍 房间不存在",
-                RoomErrorReason.RoomFull => "👥 房间已满",
-                RoomErrorReason.ConnectionFailed => "🔌 网络连接失败",
-                RoomErrorReason.AlreadyInRoom => "⚠️ 已在房间中",
-                _ => $"❌ 操作失败：{error.message}"
+                RoomErrorReason.Timeout => "⏰ Operation timed out",
+                RoomErrorReason.RoomNotFound => "🔍 Room not found",
+                RoomErrorReason.RoomFull => "👥 Room is full",
+                RoomErrorReason.ConnectionFailed => "🔌 Network connection failed",
+                RoomErrorReason.AlreadyInRoom => "⚠️ Already in a room",
+                _ => $"❌ Operation failed: {error.message}"
             };
             
             if (listStatusText != null)
@@ -152,7 +152,7 @@ public class RoomListController : MonoBehaviour
             Debug.Log("📡 使用契约刷新房间列表");
             GameContract.RoomCommands.RefreshRoomList();
             if (listStatusText != null)
-                listStatusText.text = "🔍 正在搜索局域网房间...";
+                listStatusText.text = "🔍 Searching for LAN rooms...";
         }
         else
         {
@@ -163,12 +163,12 @@ public class RoomListController : MonoBehaviour
                 manualDiscovery.StopListening();
                 manualDiscovery.StartListening();
                 if (listStatusText != null)
-                    listStatusText.text = "🔍 正在搜索局域网房间...";
+                    listStatusText.text = "🔍 Searching for LAN rooms...";
             }
             else
             {
                 if (listStatusText != null)
-                    listStatusText.text = "❌ 错误：未找到 ManualDiscovery 组件！";
+                    listStatusText.text = "❌ ManualDiscovery component not found";
             }
         }
         
@@ -179,7 +179,7 @@ public class RoomListController : MonoBehaviour
     // ===== 使用契约中的 RoomInfo =====
     public void AddRoom(string serverId, string ipAddress, int port, string roomName, 
                         string hostName, int currentPlayers, int maxPlayers, 
-                        RoomStatus status, string gameMode = "经典模式", float ping = -1f)
+                        RoomStatus status, string gameMode = "Classic Mode", float ping = -1f)
     {
         if (allRooms.Any(r => r.serverId == serverId))
         {
@@ -221,7 +221,7 @@ public class RoomListController : MonoBehaviour
                 RoomItemUI item = roomItemMap[serverId];
                 if (item.playerCountText != null)
                 {
-                    item.playerCountText.text = $"{currentPlayers}/{updated.maxPlayers}人";
+                    item.playerCountText.text = $"{currentPlayers}/{updated.maxPlayers} players";
                 }
             }
             
@@ -347,15 +347,15 @@ public class RoomListController : MonoBehaviour
         
         if (allRooms.Count == 0)
         {
-            listStatusText.text = "📭 没有找到任何房间，点击「刷新」搜索";
+            listStatusText.text = "📭 No rooms found. Tap Refresh to search";
         }
         else if (displayedRooms.Count == 0)
         {
-            listStatusText.text = $"🔍 没有匹配的房间（共 {allRooms.Count} 个）";
+            listStatusText.text = $"🔍 No matching rooms ({allRooms.Count} total)";
         }
         else
         {
-            listStatusText.text = $"✅ 找到 {allRooms.Count} 个房间 | 🟢空闲:{idleCount} 🟡游戏中:{playingCount}";
+            listStatusText.text = $"✅ Found {allRooms.Count} rooms | 🟢Idle:{idleCount} 🟡In Game:{playingCount}";
         }
     }
     
@@ -367,7 +367,7 @@ public class RoomListController : MonoBehaviour
         {
             Debug.LogError("❌ netManager 为空！");
             if (listStatusText != null)
-                listStatusText.text = "❌ 错误：找不到网络管理器！";
+                listStatusText.text = "❌ Network manager not found";
             return;
         }
         
@@ -376,13 +376,13 @@ public class RoomListController : MonoBehaviour
         if (isObserver)
         {
             if (listStatusText != null)
-                listStatusText.text = $"👀 以观战模式加入 {roomData.roomName}...";
+                listStatusText.text = $"👀 Joining {roomData.roomName} as spectator...";
             Debug.Log($"👀 以观战模式加入房间：{roomData.roomName}");
         }
         else
         {
             if (listStatusText != null)
-                listStatusText.text = $"🎮 以玩家身份加入 {roomData.roomName}...";
+                listStatusText.text = $"🎮 Joining {roomData.roomName} as player...";
             Debug.Log($"🎮 以玩家身份加入房间：{roomData.roomName}");
         }
         
@@ -395,7 +395,7 @@ public class RoomListController : MonoBehaviour
             Debug.Log($"📡 使用契约加入房间: {roomData.serverId}");
             GameContract.RoomCommands.JoinRoom(roomData.serverId);
             if (listStatusText != null)
-                listStatusText.text = $"⏳ 正在加入 {roomData.roomName}...";
+                listStatusText.text = $"⏳ Joining {roomData.roomName}...";
         }
         else
         {
@@ -421,14 +421,14 @@ public class RoomListController : MonoBehaviour
         netManager.StartClient();
         
         if (listStatusText != null)
-            listStatusText.text = $"⏳ 正在连接 {roomData.ipAddress}...";
+            listStatusText.text = $"⏳ Connecting {roomData.ipAddress}...";
     }
     
     void OnSortChanged(int index)
     {
         ApplyFiltersAndSort();
         if (listStatusText != null && sortDropdown != null)
-            listStatusText.text = $"📊 已按「{sortDropdown.options[index].text}」排序";
+            listStatusText.text = $"📊 Sorted by \"{sortDropdown.options[index].text}\"";
     }
     
     void OnSearchEndEdit(string searchText)
@@ -452,7 +452,7 @@ public class RoomListController : MonoBehaviour
         if (!string.IsNullOrEmpty(searchText))
         {
             if (listStatusText != null)
-                listStatusText.text = $"🔍 搜索: \"{searchText}\" 结果: {displayedRooms.Count} 个房间";
+                listStatusText.text = $"🔍 Search: \"{searchText}\" Results: {displayedRooms.Count} rooms";
         }
         else
         {

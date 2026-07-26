@@ -1,6 +1,7 @@
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
+using System.Collections;
 using System.Collections.Generic;
 
 public class ScoreUIController : MonoBehaviour
@@ -22,6 +23,7 @@ public class ScoreUIController : MonoBehaviour
     private float cachedPanelHeight = 200f;
     private float cachedContentHeight = 20f;
     private ContentHeightLimiter heightLimiter;
+    private bool isSubscribed;
     
     void Start()
     {
@@ -65,7 +67,67 @@ public class ScoreUIController : MonoBehaviour
                 btnText.text = "▶";
         }
         isExpanded = false;
+
+        SubscribeEvents();
+        UpdateScoreList();
     }
+
+    void OnDestroy()
+    {
+        UnsubscribeEvents();
+    }
+
+    void SubscribeEvents()
+    {
+        if (isSubscribed) return;
+        if (!GameContract.IsBound)
+        {
+            StartCoroutine(RetrySubscribeEvents());
+            return;
+        }
+
+        try
+        {
+            GameContract.Events.OnPhaseChanged += OnPhaseChanged;
+            GameContract.Events.OnCaptured += OnCaptured;
+            GameContract.Events.OnRoleSlotsChanged += OnRoleSlotsChanged;
+            isSubscribed = true;
+            UpdateScoreList();
+        }
+        catch (System.Exception e)
+        {
+            Debug.LogWarning($"ScoreUI 订阅事件失败：{e.Message}");
+        }
+    }
+
+    IEnumerator RetrySubscribeEvents()
+    {
+        float waited = 0f;
+        while (!GameContract.IsBound && waited < 5f)
+        {
+            yield return null;
+            waited += Time.unscaledDeltaTime;
+        }
+        if (GameContract.IsBound)
+            SubscribeEvents();
+    }
+
+    void UnsubscribeEvents()
+    {
+        if (!isSubscribed || !GameContract.IsBound) return;
+        try
+        {
+            GameContract.Events.OnPhaseChanged -= OnPhaseChanged;
+            GameContract.Events.OnCaptured -= OnCaptured;
+            GameContract.Events.OnRoleSlotsChanged -= OnRoleSlotsChanged;
+            isSubscribed = false;
+        }
+        catch { }
+    }
+
+    void OnPhaseChanged(GamePhase phase, float duration) => UpdateScoreList();
+    void OnCaptured(CaptureInfo info) => UpdateScoreList();
+    void OnRoleSlotsChanged(RoleSlots slots) => UpdateScoreList();
     
     void ToggleScoreList()
     {
@@ -73,6 +135,7 @@ public class ScoreUIController : MonoBehaviour
         
         if (isExpanded)
         {
+            UpdateScoreList();
             ExpandScoreList();
         }
         else
@@ -233,8 +296,9 @@ public class ScoreUIController : MonoBehaviour
             roleText.color = roleColor;
         }
         
+        // 契约缺口：IPlayerStateReadonly 无 Score / 击杀分，暂 stub
         if (scoreText != null)
-            scoreText.text = "0分";
+            scoreText.text = "0 pts";
         
         scoreItems.Add(item);
     }
@@ -243,9 +307,9 @@ public class ScoreUIController : MonoBehaviour
     {
         switch (role)
         {
-            case PlayerRole.Hider: return "躲藏者";
-            case PlayerRole.Seeker: return "抓捕者";
-            default: return "未选择";
+            case PlayerRole.Hider: return "Hider";
+            case PlayerRole.Seeker: return "Hunter";
+            default: return "None";
         }
     }
     

@@ -45,7 +45,9 @@ public class HiderDisguiseVisual : MonoBehaviour
 
         if (bodyCollider != null)
         {
-            defaultColliderSize = bodyCollider.size;
+            // 存外轮廓（含已有 edgeRadius），Restore 后再 ApplyColliderRounding，避免二次缩小
+            defaultColliderSize = bodyCollider.size
+                + new Vector2(2f * bodyCollider.edgeRadius, 2f * bodyCollider.edgeRadius);
             defaultColliderOffset = bodyCollider.offset;
         }
     }
@@ -275,9 +277,12 @@ public class HiderDisguiseVisual : MonoBehaviour
         size.x = Mathf.Max(size.x, minColliderSize.x * GameConstants.ItemScaleX / absX);
         size.y = Mathf.Max(size.y, minColliderSize.y * GameConstants.ItemScaleY / absY);
 
+        // 先写完整矩形再圆角，使伪装碰撞外形与放置物一致
+        bodyCollider.edgeRadius = 0f;
         bodyCollider.size = size;
         bodyCollider.offset = offset;
-        SyncGroundCheckToColliderBottom(size, offset);
+        CollisionLayers.ApplyColliderRounding(bodyCollider);
+        SyncGroundCheckToColliderBottom();
     }
 
     static float ApproxAbs(float v)
@@ -312,20 +317,24 @@ public class HiderDisguiseVisual : MonoBehaviour
         if (bodyCollider == null)
             return;
 
+        bodyCollider.edgeRadius = 0f;
         bodyCollider.size = defaultColliderSize;
         bodyCollider.offset = defaultColliderOffset;
-        SyncGroundCheckToColliderBottom(defaultColliderSize, defaultColliderOffset);
+        CollisionLayers.ApplyColliderRounding(bodyCollider);
+        SyncGroundCheckToColliderBottom();
     }
 
-    /// <summary>把 GroundCheck 放到碰撞箱底边略下方，避免变身高低不同时落地检测错位。</summary>
-    void SyncGroundCheckToColliderBottom(Vector2 size, Vector2 offset)
+    /// <summary>把 GroundCheck 放到碰撞箱底边（含 edgeRadius）略下方，避免变身高低不同时落地检测错位。</summary>
+    void SyncGroundCheckToColliderBottom()
     {
+        if (bodyCollider == null)
+            return;
+
+        CollisionLayers.SyncGroundCheckToColliderBottom(gameObject, bodyCollider);
+
         Transform groundCheck = transform.Find("GroundCheck");
         if (groundCheck == null)
             return;
-
-        float bottom = offset.y - size.y * 0.5f;
-        groundCheck.localPosition = new Vector3(offset.x, bottom - 0.02f, 0f);
 
         var hider = GetComponent<HiderController>();
         if (hider != null)

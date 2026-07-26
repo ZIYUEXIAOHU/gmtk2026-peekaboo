@@ -29,6 +29,29 @@ public static class CollisionLayerSetup
             Debug.Log("[CollisionLayerSetup] Hider / Seeker / HiderItem 已就绪。");
     }
 
+    [MenuItem("Peekaboo/Round All Scene Box Colliders")]
+    public static void RoundAllSceneBoxCollidersMenu()
+    {
+        BoxCollider2D[] cols = Object.FindObjectsOfType<BoxCollider2D>(true);
+        int count = 0;
+        for (int i = 0; i < cols.Length; i++)
+        {
+            BoxCollider2D col = cols[i];
+            if (col == null)
+                continue;
+
+            bool isActor = col.GetComponent<RoomPlayer>() != null ||
+                           col.GetComponent<InvestigableObject>() != null;
+            Undo.RecordObject(col, "Round Box Collider");
+            CollisionLayers.ApplyColliderRounding(col, useMinScale: isActor);
+            EditorUtility.SetDirty(col);
+            count++;
+        }
+
+        Debug.Log($"[CollisionLayerSetup] 已为 {count} 个 BoxCollider2D 应用圆角（世界半径 {GameConstants.ColliderEdgeRadiusWorld}）。");
+    }
+
+
     public static bool EnsureLayers()
     {
         Object[] assets = AssetDatabase.LoadAllAssetsAtPath(TagManagerPath);

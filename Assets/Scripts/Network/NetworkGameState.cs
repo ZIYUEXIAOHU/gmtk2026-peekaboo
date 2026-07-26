@@ -1,13 +1,13 @@
 // ============================================================
-// 程序 1：对局权威核心（Wave 1 + Wave 2 + Wave 3）
-// 实现契约 IGameStateReadonly / IGameCommands / IGameEvents，
-// 覆盖：阶段状态机、身份名额、房主开局、
-// PlaceItem / Investigate / Slash / Capture、
-// 躲藏者定时变身 / 抓捕者心跳 / 结算收尾。
+// Program 1: Match authority core (Wave 1 + Wave 2 + Wave 3)
+// Implements contracts IGameStateReadonly / IGameCommands / IGameEvents,
+// covering: phase state machine, role slots, host start,
+// PlaceItem / Investigate / Slash / Capture,
+// Hider periodic transform / Seeker heartbeat / results wrap-up.
 //
-// 玩家列表来源：场景中所有 RoomPlayer。
-// 房主判定：RoomPlayer.isRoomHost。
-// IPlayerStateReadonly 挂在 RoomPlayer 上。
+// Player list source: all RoomPlayer in the scene.
+// Host check: RoomPlayer.isRoomHost.
+// IPlayerStateReadonly is attached to RoomPlayer.
 // ============================================================
 
 using System;
@@ -72,7 +72,8 @@ public class NetworkGameState : NetworkBehaviour, IGameStateReadonly, IGameComma
     private double matchStartServerTime;
 
     // ---- Wave 3：变身 / 心跳（仅服务端计时，Ended/Prep 不跑）----
-    /// <summary>下一次全体变身时刻（NetworkTime.time）。</summary>
+    /// <summary>下一次全体变身时刻（NetworkTime.time）。SyncVar 供客户端算 NextTransformTimeLeft。</summary>
+    [SyncVar]
     private double nextTransformTime;
 
     /// <summary>本轮变身隐身结束时刻；到点把仍 Invisible 的存活躲藏者改回 Disguised。</summary>
@@ -211,6 +212,16 @@ public class NetworkGameState : NetworkBehaviour, IGameStateReadonly, IGameComma
         {
             if (phase == GamePhase.Waiting || phase == GamePhase.Ended) return 0f;
             return Mathf.Max(0f, (float)(phaseEndTime - NetworkTime.time));
+        }
+    }
+
+    public float NextTransformTimeLeft
+    {
+        get
+        {
+            if (phase != GamePhase.Playing) return 0f;
+            if (nextTransformTime >= double.MaxValue / 2) return 0f;
+            return Mathf.Max(0f, (float)(nextTransformTime - NetworkTime.time));
         }
     }
 

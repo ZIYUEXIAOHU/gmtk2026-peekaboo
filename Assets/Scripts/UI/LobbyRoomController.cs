@@ -569,6 +569,17 @@ public class LobbyRoomController : MonoBehaviour
             Destroy(item);
         }
         playerItems.Clear();
+
+        // Destroy 延后到帧末：立刻清掉同 Content 上残留子节点，避免与其它控制器双写留下「Name ROLE」占位
+        if (playerListParent != null)
+        {
+            for (int i = playerListParent.childCount - 1; i >= 0; i--)
+            {
+                Transform child = playerListParent.GetChild(i);
+                if (child != null)
+                    Destroy(child.gameObject);
+            }
+        }
         
         RoomPlayer[] players = GetSceneRoomPlayers();
         
@@ -577,17 +588,24 @@ public class LobbyRoomController : MonoBehaviour
             if (player == null) continue;
             
             GameObject item = Instantiate(playerItemPrefab, playerListParent);
-            TextMeshProUGUI text = item.GetComponent<TextMeshProUGUI>();
-            if (text != null)
-            {
-                bool isLocal = (player.connectionId == localConnectionId);
-                string roleName = GetRoleDisplayName(player.Role);
-                string readyMark = player.isReady ? " ✅" : "";
-                string localMark = isLocal ? " (YOU)" : "";
-                
-                text.text = $"{player.playerName}{localMark} - {roleName}{readyMark}";
-                text.color = isLocal ? Color.yellow : Color.white;
-            }
+            bool isLocal = (player.connectionId == localConnectionId);
+            string displayName = player.playerName + (isLocal ? " (YOU)" : "");
+
+            // PlayerItemPrefab：PlayerNameText + RoleText（根节点无 TMP，勿 GetComponent 根）
+            PlayerListUIController.ApplyPlayerItemTexts(item, displayName, player.Role);
+
+            TextMeshProUGUI nameText = item.transform.Find("PlayerNameText")?.GetComponent<TextMeshProUGUI>();
+            if (nameText != null && isLocal)
+                nameText.color = Color.yellow;
+
+            Transform readyIcon = item.transform.Find("ReadyIcon");
+            if (readyIcon != null)
+                readyIcon.gameObject.SetActive(player.isReady);
+
+            Transform hostIcon = item.transform.Find("HostIcon");
+            if (hostIcon != null)
+                hostIcon.gameObject.SetActive(player.isRoomHost);
+
             playerItems.Add(item);
         }
         

@@ -1,6 +1,7 @@
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
+using System.Collections;
 using System.Collections.Generic;
 
 public class PlayerListUIController : MonoBehaviour
@@ -22,6 +23,7 @@ public class PlayerListUIController : MonoBehaviour
     private float cachedPanelHeight = 200f;
     private float cachedContentHeight = 20f;
     private ContentHeightLimiter heightLimiter;
+    private bool isSubscribed;
     
     void Start()
     {
@@ -52,6 +54,88 @@ public class PlayerListUIController : MonoBehaviour
         }
         
         Debug.Log($"📏 PlayerList 初始高度 - Content: {cachedContentHeight}, Panel: {cachedPanelHeight}");
+
+        SubscribeEvents();
+        RefreshFromContract();
+    }
+
+    void OnDestroy()
+    {
+        UnsubscribeEvents();
+    }
+
+    void SubscribeEvents()
+    {
+        if (isSubscribed) return;
+        if (!GameContract.IsBound)
+        {
+            StartCoroutine(RetrySubscribeEvents());
+            return;
+        }
+
+        try
+        {
+            GameContract.Events.OnPhaseChanged += OnPhaseChanged;
+            GameContract.Events.OnCaptured += OnCaptured;
+            GameContract.Events.OnRoleSlotsChanged += OnRoleSlotsChanged;
+            isSubscribed = true;
+            RefreshFromContract();
+        }
+        catch (System.Exception e)
+        {
+            Debug.LogWarning($"PlayerList 订阅事件失败：{e.Message}");
+        }
+    }
+
+    IEnumerator RetrySubscribeEvents()
+    {
+        float waited = 0f;
+        while (!GameContract.IsBound && waited < 5f)
+        {
+            yield return null;
+            waited += Time.unscaledDeltaTime;
+        }
+        if (GameContract.IsBound)
+            SubscribeEvents();
+    }
+
+    void UnsubscribeEvents()
+    {
+        if (!isSubscribed || !GameContract.IsBound) return;
+        try
+        {
+            GameContract.Events.OnPhaseChanged -= OnPhaseChanged;
+            GameContract.Events.OnCaptured -= OnCaptured;
+            GameContract.Events.OnRoleSlotsChanged -= OnRoleSlotsChanged;
+            isSubscribed = false;
+        }
+        catch { }
+    }
+
+    void OnPhaseChanged(GamePhase phase, float duration) => RefreshFromContract();
+    void OnCaptured(CaptureInfo info) => RefreshFromContract();
+    void OnRoleSlotsChanged(RoleSlots slots) => RefreshFromContract();
+
+    /// <summary>
+    /// Waiting 大厅列表由 LobbyRoomController 独占同一 Content；本组件只在对局阶段刷新，避免双写出「Name ROLE」占位行。
+    /// </summary>
+    bool ShouldOwnListRefresh()
+    {
+        if (!GameContract.IsBound || GameContract.State == null) return false;
+        return GameContract.State.Phase != GamePhase.Waiting;
+    }
+
+    void RefreshFromContract()
+    {
+        if (!ShouldOwnListRefresh()) return;
+
+        List<IPlayerStateReadonly> players = new List<IPlayerStateReadonly>();
+        foreach (var p in GameContract.State.Players)
+        {
+            if (p != null)
+                players.Add(p);
+        }
+        UpdatePlayerList(players);
     }
     
     void TogglePlayerList()
@@ -204,40 +288,60 @@ public class PlayerListUIController : MonoBehaviour
         if (playerItemPrefab == null || playerListParent == null) return;
         
         GameObject item = Instantiate(playerItemPrefab, playerListParent);
-        
-        TextMeshProUGUI nameText = item.transform.Find("PlayerNameText")?.GetComponent<TextMeshProUGUI>();
-        TextMeshProUGUI roleText = item.transform.Find("RoleNameText")?.GetComponent<TextMeshProUGUI>();
-        TextMeshProUGUI readyText = item.transform.Find("ReadyText")?.GetComponent<TextMeshProUGUI>();
-        
-        if (nameText != null)
-            nameText.text = player.PlayerName;
-        
-        if (roleText != null)
-        {
-            string roleName = GetRoleDisplayName(player.Role);
-            roleText.text = roleName;
-            roleText.color = GetRoleColor(player.Role);
-        }
-        
-        if (readyText != null)
-        {
-            readyText.text = "";
-        }
-        
+        ApplyPlayerItemTexts(item, player.PlayerName, player.Role);
         playerItems.Add(item);
     }
-    
-    string GetRoleDisplayName(PlayerRole role)
+
+    /// <summary>
+    /// PlayerItemPrefab 子节点为 PlayerNameText / RoleText（非 RoleNameText）。
+    /// </summary>
+    public static void ApplyPlayerItemTexts(GameObject item, string playerName, PlayerRole role)
+    {
+        if (item == null) return;
+
+        TextMeshProUGUI nameText = item.transform.Find("PlayerNameText")?.GetComponent<TextMeshProUGUI>();
+        TextMeshProUGUI roleText = FindRoleText(item.transform);
+
+        if (nameText != null)
+            nameText.text = string.IsNullOrEmpty(playerName) ? "Player" : playerName;
+
+        if (roleText != null)
+        {
+            roleText.text = GetRoleDisplayNameStatic(role);
+            roleText.color = GetRoleColorStatic(role);
+        }
+
+        // 契约缺口：IPlayerStateReadonly 无 IsReady；预制体 ReadyIcon 非文本，暂不驱动
+        TextMeshProUGUI readyText = item.transform.Find("ReadyText")?.GetComponent<TextMeshProUGUI>();
+        if (readyText != null)
+            readyText.text = "";
+
+        // 预制体默认 Active；局内列表无 ready/host 接口时先藏起，大厅由 LobbyRoom 再打开
+        Transform readyIcon = item.transform.Find("ReadyIcon");
+        if (readyIcon != null)
+            readyIcon.gameObject.SetActive(false);
+        Transform hostIcon = item.transform.Find("HostIcon");
+        if (hostIcon != null)
+            hostIcon.gameObject.SetActive(false);
+    }
+
+    static TextMeshProUGUI FindRoleText(Transform root)
+    {
+        var t = root.Find("RoleText") ?? root.Find("RoleNameText");
+        return t != null ? t.GetComponent<TextMeshProUGUI>() : null;
+    }
+
+    static string GetRoleDisplayNameStatic(PlayerRole role)
     {
         switch (role)
         {
-            case PlayerRole.Hider: return "🟢 躲藏者";
-            case PlayerRole.Seeker: return "🔴 抓捕者";
-            default: return "❓ 未选择";
+            case PlayerRole.Hider: return "🟢 Hider";
+            case PlayerRole.Seeker: return "🔴 Hunter";
+            default: return "❓ None";
         }
     }
-    
-    Color GetRoleColor(PlayerRole role)
+
+    static Color GetRoleColorStatic(PlayerRole role)
     {
         switch (role)
         {
@@ -246,6 +350,9 @@ public class PlayerListUIController : MonoBehaviour
             default: return Color.gray;
         }
     }
+    
+    string GetRoleDisplayName(PlayerRole role) => GetRoleDisplayNameStatic(role);
+    Color GetRoleColor(PlayerRole role) => GetRoleColorStatic(role);
     
     public void Show()
     {

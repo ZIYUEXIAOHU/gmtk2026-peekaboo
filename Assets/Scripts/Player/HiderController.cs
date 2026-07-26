@@ -78,11 +78,11 @@ public class HiderController : NetworkBehaviour
             }
         }
 
-        // 初始贴合当前 BoxCollider2D 底边；之后变身由 HiderDisguiseVisual 同步
+        // 初始贴合当前 BoxCollider2D 底边（含圆角）；之后变身由 HiderDisguiseVisual 同步
         BoxCollider2D col = GetComponent<BoxCollider2D>();
         if (col != null)
         {
-            float bottom = col.offset.y - col.size.y * 0.5f;
+            float bottom = col.offset.y - col.size.y * 0.5f - col.edgeRadius;
             groundCheckPoint.localPosition = new Vector3(col.offset.x, bottom - 0.02f, 0f);
         }
         else if (groundCheckPoint.localPosition == Vector3.zero)
@@ -248,7 +248,9 @@ public class HiderController : NetworkBehaviour
     {
         BoxCollider2D col = GetComponent<BoxCollider2D>();
         float width = col != null
-            ? Mathf.Max(col.size.x * Mathf.Abs(transform.lossyScale.x), groundCheckRadius * 2f)
+            ? Mathf.Max(
+                (col.size.x + 2f * col.edgeRadius) * Mathf.Abs(transform.lossyScale.x),
+                groundCheckRadius * 2f)
             : groundCheckRadius * 2f;
         float height = groundCheckRadius * 2f;
         return new Vector2(width, height);
@@ -275,7 +277,7 @@ public class HiderController : NetworkBehaviour
                 BoxCollider2D col = GetComponent<BoxCollider2D>();
                 if (col != null)
                 {
-                    float bottom = col.offset.y - col.size.y * 0.5f;
+                    float bottom = col.offset.y - col.size.y * 0.5f - col.edgeRadius;
                     go.transform.localPosition = new Vector3(col.offset.x, bottom - 0.02f, 0f);
                 }
                 else
@@ -387,7 +389,10 @@ public class HiderController : NetworkBehaviour
             ? GetGroundCheckBoxSize()
             : new Vector2(
                 GetComponent<BoxCollider2D>() != null
-                    ? Mathf.Max(GetComponent<BoxCollider2D>().size.x * Mathf.Abs(transform.lossyScale.x), groundCheckRadius * 2f)
+                    ? Mathf.Max(
+                        (GetComponent<BoxCollider2D>().size.x + 2f * GetComponent<BoxCollider2D>().edgeRadius)
+                            * Mathf.Abs(transform.lossyScale.x),
+                        groundCheckRadius * 2f)
                     : groundCheckRadius * 2f,
                 groundCheckRadius * 2f);
         Gizmos.DrawWireCube(groundCheckPoint.position, size);

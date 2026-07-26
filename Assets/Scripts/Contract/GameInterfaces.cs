@@ -25,8 +25,10 @@ using UnityEngine;
 public interface IGameStateReadonly
 {
     GamePhase Phase { get; }
-    /// <summary>当前阶段剩余秒数（Prep: 40 起倒数；Playing: 250 起倒数）。</summary>
+    /// <summary>当前阶段剩余秒数（Prep: 10 起倒数；Playing: 180 起倒数）。</summary>
     float PhaseTimeLeft { get; }
+    /// <summary>距下次全体变身剩余秒数（仅 Playing；其余阶段为 0）。程序 2 每帧轮询。</summary>
+    float NextTransformTimeLeft { get; }
 
     int AliveHiders { get; }
     int TotalHiders { get; }
