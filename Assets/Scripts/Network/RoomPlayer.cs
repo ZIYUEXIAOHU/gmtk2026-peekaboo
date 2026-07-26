@@ -43,6 +43,10 @@ public class RoomPlayer : NetworkBehaviour, IPlayerStateReadonly
     public GameObject visualHider;
     public GameObject visualSeeker;
 
+    /// <summary>Hider 必须高于 Seeker，避免同 Order 时重叠闪烁。</summary>
+    const int HiderSortingOrder = 20;
+    const int SeekerSortingOrder = 10;
+
     // ---- IPlayerStateReadonly ----
     public uint NetId => netId;
     public string PlayerName => playerName;
@@ -153,14 +157,26 @@ public class RoomPlayer : NetworkBehaviour, IPlayerStateReadonly
         bool showSeeker = currentRole == PlayerRole.Seeker;
 
         if (visualHider != null)
+        {
             visualHider.SetActive(showHider);
+            SetVisualSortingOrder(visualHider, HiderSortingOrder);
+        }
 
         if (visualSeeker != null)
         {
             if (!visualSeeker.activeSelf)
                 visualSeeker.SetActive(true);
             SetChildVisualVisible(visualSeeker, showSeeker);
+            SetVisualSortingOrder(visualSeeker, SeekerSortingOrder);
         }
+    }
+
+    /// <summary>只改根节点 SpriteRenderer，不碰 RangeIndicator 等子渲染器。</summary>
+    static void SetVisualSortingOrder(GameObject visual, int order)
+    {
+        SpriteRenderer sr = visual.GetComponent<SpriteRenderer>();
+        if (sr != null)
+            sr.sortingOrder = order;
     }
 
     static void SetChildVisualVisible(GameObject visual, bool visible)

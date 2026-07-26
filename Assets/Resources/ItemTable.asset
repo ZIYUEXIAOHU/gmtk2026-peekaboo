@@ -13,36 +13,47 @@ MonoBehaviour:
   m_Name: ItemTable
   m_EditorClassIdentifier: 
   items:
-  - displayName: 咖啡桌
+  - displayName: "\u5496\u5561\u684C"
     prefab: {fileID: 1000000001, guid: 087f5cadc48e44749690ae0d768c9f63, type: 3}
     icon: {fileID: 21300000, guid: b319811ac8d342cd8e3f0ee5549506b6, type: 3}
-  - displayName: 摇摇马
+    size: 0
+  - displayName: "\u6447\u6447\u9A6C"
     prefab: {fileID: 1000000001, guid: 3e51e06c3db34159ba0a6c81f1551814, type: 3}
     icon: {fileID: 21300000, guid: 4eda07983ffd419f8697ddb9a629e68d, type: 3}
-  - displayName: 落地灯
+    size: 0
+  - displayName: "\u843D\u5730\u706F"
     prefab: {fileID: 1000000001, guid: 5be97a9de84540f3929c986b2561e2d1, type: 3}
     icon: {fileID: 21300000, guid: 03e62c689a5e4df69d8c0c222cc8379f, type: 3}
-  - displayName: 台灯
+    size: 0
+  - displayName: "\u53F0\u706F"
     prefab: {fileID: 1000000001, guid: b3d4d6b013e44c7fbf0752303669ca61, type: 3}
     icon: {fileID: 21300000, guid: 4306ba039401423daf76c83341fd18b2, type: 3}
-  - displayName: 音乐盒
+    size: 1
+  - displayName: "\u97F3\u4E50\u76D2"
     prefab: {fileID: 1000000001, guid: 73a8505294404b6baaab37afe2ccc115, type: 3}
     icon: {fileID: 21300000, guid: f7239421f8c94f0daed99abee9c93dae, type: 3}
-  - displayName: 兔子玩偶
+    size: 1
+  - displayName: "\u5154\u5B50\u73A9\u5076"
     prefab: {fileID: 1000000001, guid: 73b75c72c5de478c9c2fbe0d1539f3fa, type: 3}
     icon: {fileID: 21300000, guid: b9531a078c324145899b1d4e1c647970, type: 3}
-  - displayName: 边桌
+    size: 1
+  - displayName: "\u8FB9\u684C"
     prefab: {fileID: 1000000001, guid: 1a5a5071d977494d9d8bd0121f7ddbc2, type: 3}
     icon: {fileID: 21300000, guid: 2640a0b0da6f4f92b5ff460a66708785, type: 3}
-  - displayName: 花瓶
+    size: 1
+  - displayName: "\u82B1\u74F6"
     prefab: {fileID: 1000000001, guid: 13bf1d794a53474dbdf1b8ca4a1c853b, type: 3}
     icon: {fileID: 21300000, guid: 0b5bc66e11ec4532b8742e812d382464, type: 3}
-  - displayName: 药瓶
+    size: 1
+  - displayName: "\u836F\u74F6"
     prefab: {fileID: 1000000001, guid: a9e0370a269940038efa32ad134e9ded, type: 3}
     icon: {fileID: 21300000, guid: 7669b808b1304ac1853b6a2d6a4ebea7, type: 3}
-  - displayName: 薄荷兔
+    size: 2
+  - displayName: "\u8584\u8377\u5154"
     prefab: {fileID: 1000000001, guid: 01cc2a472c0b4d6888e914722d7fa92f, type: 3}
     icon: {fileID: 21300000, guid: 7363dab4a89a4492ba919c266b9c22ff, type: 3}
-  - displayName: 茶杯
+    size: 2
+  - displayName: "\u8336\u676F"
     prefab: {fileID: 1000000001, guid: 95e7b98cf23b4237a31f5e034f607ba7, type: 3}
     icon: {fileID: 21300000, guid: a838067613b94246a846b2ef2929b616, type: 3}
+    size: 2

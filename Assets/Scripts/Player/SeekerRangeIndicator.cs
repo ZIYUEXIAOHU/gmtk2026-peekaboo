@@ -2,7 +2,7 @@ using UnityEngine;
 
 /// <summary>
 /// 抓捕者探测圈表现：可见圈半径 = GameConstants.InvestigateRange，
-/// 并高亮范围内最近的可调查目标（InvestigableObject 或伪装中的躲藏者本体）。
+/// 并高亮探测圈内、鼠标判定半径内最近的可调查目标（InvestigableObject 或伪装中的躲藏者本体）。
 /// 不因「圈内有躲藏者」变红，避免直接暴露伪装。
 /// </summary>
 public class SeekerRangeIndicator : MonoBehaviour
@@ -75,7 +75,7 @@ public class SeekerRangeIndicator : MonoBehaviour
             return;
         }
 
-        FindAndHighlightNearest();
+        FindAndHighlightUnderCursor();
         UpdateIndicator();
     }
 
@@ -103,21 +103,26 @@ public class SeekerRangeIndicator : MonoBehaviour
         return roomPlayer.isLocalPlayer && roomPlayer.Role == PlayerRole.Seeker;
     }
 
-    void FindAndHighlightNearest()
+    void FindAndHighlightUnderCursor()
     {
         Vector2 origin = detectCenter != null ? (Vector2)detectCenter.position : (Vector2)transform.position;
+        Vector2 mousePos = GetMouseWorldPosition();
+        float pickRadius = GameConstants.InvestigateCursorPickRadius;
         float bestDist = float.MaxValue;
         SpriteRenderer bestRenderer = null;
 
         foreach (InvestigableObject obj in FindObjectsOfType<InvestigableObject>())
         {
             if (obj == null) continue;
-            float d = Vector2.Distance(origin, obj.transform.position);
-            if (d > detectRadius || d >= bestDist) continue;
+            Vector2 pos = obj.transform.position;
+            if (Vector2.Distance(origin, pos) > detectRadius) continue;
+
+            float dMouse = Vector2.Distance(mousePos, pos);
+            if (dMouse > pickRadius || dMouse >= bestDist) continue;
 
             SpriteRenderer sr = ResolveItemSprite(obj.transform);
             if (sr == null || !sr.enabled) continue;
-            bestDist = d;
+            bestDist = dMouse;
             bestRenderer = sr;
         }
 
@@ -127,13 +132,16 @@ public class SeekerRangeIndicator : MonoBehaviour
             if (rp.hiderState != HiderState.Disguised && rp.hiderState != HiderState.Invisible)
                 continue;
 
-            float d = Vector2.Distance(origin, rp.transform.position);
-            if (d > detectRadius || d >= bestDist) continue;
+            Vector2 pos = rp.transform.position;
+            if (Vector2.Distance(origin, pos) > detectRadius) continue;
+
+            float dMouse = Vector2.Distance(mousePos, pos);
+            if (dMouse > pickRadius || dMouse >= bestDist) continue;
 
             SpriteRenderer sr = ResolveHiderSprite(rp);
             if (sr == null || !sr.enabled) continue;
 
-            bestDist = d;
+            bestDist = dMouse;
             bestRenderer = sr;
         }
 
@@ -150,6 +158,15 @@ public class SeekerRangeIndicator : MonoBehaviour
             highlightedHadOriginal = true;
             bestRenderer.color = highlightTint;
         }
+    }
+
+    static Vector2 GetMouseWorldPosition()
+    {
+        Camera cam = Camera.main;
+        if (cam == null)
+            return Vector2.zero;
+        Vector3 p = cam.ScreenToWorldPoint(Input.mousePosition);
+        return new Vector2(p.x, p.y);
     }
 
     static SpriteRenderer ResolveItemSprite(Transform root)

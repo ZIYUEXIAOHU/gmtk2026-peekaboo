@@ -3,35 +3,76 @@ using UnityEngine;
 
 /// <summary>
 /// 程序 2 表现：订阅 OnHeartbeatPulse，让探测/心跳圈内「躲藏者放置的可调查物」视觉节点跳动。
-/// 幅度与空中时长对齐躲藏者跳跃（jumpForce=18 / gravityScale=3）。不带动伪装躲藏者本体。
-/// 只动子节点 localPosition，不动根节点/刚体。
+/// 节奏：跳起 → 落地 → 停 HeartbeatInterval±100ms → 再跳。
+/// 用绝对节拍锚点调度，单次可抖 ±100ms，相对理想节拍累计偏差不超过 ±150ms。
+/// 高度：半个玩家跳高，空中时间 T=√(8h/g) 与高度自洽。
+/// 不带动伪装躲藏者本体。只动子节点 localPosition，不动根节点/刚体。
 /// </summary>
 public class HeartbeatBobManager : MonoBehaviour
 {
-    /// <summary>对齐 HiderController：jumpForce=18、gravityScale=3。</summary>
+    /// <summary>对齐 HiderController：jumpForce / gravityScale。</summary>
     const float RefJumpForce = 18f;
     const float RefGravityScale = 3f;
 
-    /// <summary>一次起落时长 ≈ 2 * v / g，与玩家跳跃空中时间接近。</summary>
-    static float BobDuration =>
-        2f * RefJumpForce / Mathf.Max(0.01f, Mathf.Abs(Physics2D.gravity.y) * RefGravityScale);
+    /// <summary>
+    /// 相对玩家跳高的比例。
+    /// 1.0 ≈ 5.5 对放置物过大；按 0.4s 空中时长反推 ≈ 0.59 又过矮；取一半作可读的「跳」。
+    /// </summary>
+    const float HeightVsPlayerJump = 0.5f;
 
-    /// <summary>峰值高度 = v² / (2g)，与玩家跳一样高。</summary>
-    static float BobHeightWorld =>
-        (RefJumpForce * RefJumpForce) / Mathf.Max(0.01f, 2f * Mathf.Abs(Physics2D.gravity.y) * RefGravityScale);
+    /// <summary>超出最近一次脉冲后，仍视为「在圈内」的宽限（避免漏拍断节奏）。</summary>
+    const float InRangeGraceMul = 1.5f;
+
+    /// <summary>相对理想起跳时刻的单次随机抖动。</summary>
+    const float GroundRestJitterSeconds = 0.1f;
+
+    /// <summary>相对理想节拍的最大允许偏差（防止随机游走越积越大）。</summary>
+    const float MaxPhaseDriftSeconds = 0.15f;
+
+    static float EffectiveGravity =>
+        Mathf.Abs(Physics2D.gravity.y) * RefGravityScale;
+
+    /// <summary>玩家完整跳跃峰值 h = v²/(2g)。</summary>
+    static float PlayerJumpHeight =>
+        (RefJumpForce * RefJumpForce) / Mathf.Max(0.01f, 2f * EffectiveGravity);
+
+    /// <summary>物品心跳跳峰值 = 半个玩家跳高。</summary>
+    static float BobHeightWorld => PlayerJumpHeight * HeightVsPlayerJump;
+
+    /// <summary>与高度、重力自洽的空中时长：T = √(8h/g)。</summary>
+    static float BobDuration =>
+        Mathf.Sqrt(8f * BobHeightWorld / Mathf.Max(0.01f, EffectiveGravity));
+
+    /// <summary>理想起跳周期 = 空中时长 + 落地心跳间隔。</summary>
+    static float CyclePeriod => BobDuration + GameConstants.HeartbeatInterval;
 
     static HeartbeatBobManager instance;
     bool subscribed;
     IGameEvents boundEvents;
 
     readonly Dictionary<Transform, BobState> activeBobs = new Dictionary<Transform, BobState>();
-    readonly List<Transform> finishedKeys = new List<Transform>();
+    readonly List<Transform> scratchKeys = new List<Transform>();
+
+    /// <summary>落地后需等到该时刻才允许下一跳。</summary>
+    readonly Dictionary<Transform, float> nextJumpAllowedAt = new Dictionary<Transform, float>();
+
+    /// <summary>仍处于心跳影响范围内的截止时刻（由脉冲刷新）。</summary>
+    readonly Dictionary<Transform, float> inRangeUntil = new Dictionary<Transform, float>();
+
+    /// <summary>每物品的绝对节拍：首跳锚点 + 下一跳序号。</summary>
+    readonly Dictionary<Transform, RhythmState> rhythms = new Dictionary<Transform, RhythmState>();
 
     struct BobState
     {
         public Vector3 restLocalPos;
         public float localBobHeight;
         public float elapsed;
+    }
+
+    struct RhythmState
+    {
+        public float origin;
+        public int nextJumpIndex;
     }
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
@@ -47,6 +88,7 @@ public class HeartbeatBobManager : MonoBehaviour
     {
         TrySubscribe();
         TickBobs();
+        TickScheduledJumps();
     }
 
     void OnDestroy()
@@ -81,28 +123,118 @@ public class HeartbeatBobManager : MonoBehaviour
     void OnHeartbeatPulse(HeartbeatPulse pulse)
     {
         Vector2 center = pulse.center;
-        // 跳动范围 = 探测圈（与调查高亮一致）；pulse.radius 异常时回退常量
         float radius = pulse.radius > 0f ? pulse.radius : GameConstants.HeartbeatRadius;
-        float investigateAligned = GameConstants.InvestigateRange;
-        // 双保险：若服务端仍发旧半径，客户端按探测圈取较大者，避免「圈内不跳」
-        radius = Mathf.Max(radius, investigateAligned);
+        radius = Mathf.Max(radius, GameConstants.InvestigateRange);
+        float keepAlive = Time.time + GameConstants.HeartbeatInterval * InRangeGraceMul;
 
         foreach (InvestigableObject obj in FindObjectsOfType<InvestigableObject>())
         {
             if (obj == null) continue;
-            // 只跳放置物；关联躲藏者本体的标记物不在此跳动（本体也不跳）
             if (obj.LinksToHider) continue;
             if (Vector2.Distance(center, obj.transform.position) > radius) continue;
+
             Transform visual = ResolveItemVisual(obj.transform);
-            if (visual != null)
-                BeginBob(visual);
+            if (visual == null) continue;
+
+            inRangeUntil[visual] = keepAlive;
+            TryStartBobIfReady(visual);
         }
     }
 
+    /// <summary>圈内且已过落地停顿的物品，到点自动再跳（不依赖下一拍脉冲对齐）。</summary>
+    void TickScheduledJumps()
+    {
+        if (inRangeUntil.Count == 0) return;
+
+        scratchKeys.Clear();
+        foreach (Transform visual in inRangeUntil.Keys)
+            scratchKeys.Add(visual);
+
+        float now = Time.time;
+        for (int i = 0; i < scratchKeys.Count; i++)
+        {
+            Transform visual = scratchKeys[i];
+            if (visual == null)
+            {
+                ClearItemState(visual);
+                continue;
+            }
+
+            if (!inRangeUntil.TryGetValue(visual, out float until) || now > until)
+            {
+                inRangeUntil.Remove(visual);
+                // 离开圈后清掉节拍锚点，下次进圈重新起拍，避免旧相位硬拽
+                rhythms.Remove(visual);
+                nextJumpAllowedAt.Remove(visual);
+                continue;
+            }
+
+            TryStartBobIfReady(visual);
+        }
+
+        scratchKeys.Clear();
+    }
+
+    void TryStartBobIfReady(Transform visual)
+    {
+        if (visual == null) return;
+        if (activeBobs.ContainsKey(visual)) return;
+        if (nextJumpAllowedAt.TryGetValue(visual, out float allowedAt) && Time.time < allowedAt)
+            return;
+
+        float lossyY = Mathf.Abs(visual.lossyScale.y);
+        float localHeight = lossyY > 0.0001f ? BobHeightWorld / lossyY : BobHeightWorld;
+
+        // 首次起跳锚定绝对节拍；之后只按 origin + n*period 排程，避免抖动累积
+        if (!rhythms.ContainsKey(visual))
+        {
+            rhythms[visual] = new RhythmState
+            {
+                origin = Time.time,
+                nextJumpIndex = 1,
+            };
+        }
+
+        activeBobs[visual] = new BobState
+        {
+            restLocalPos = visual.localPosition,
+            localBobHeight = localHeight,
+            elapsed = 0f,
+        };
+    }
+
+    void ClearItemState(Transform visual)
+    {
+        inRangeUntil.Remove(visual);
+        nextJumpAllowedAt.Remove(visual);
+        rhythms.Remove(visual);
+        activeBobs.Remove(visual);
+    }
+
     /// <summary>
-    /// 优先跳非根节点视觉；根上挂 SpriteRenderer 时创建 BobVisual 子节点并挪走贴图，
-    /// 避免改根节点位置带动碰撞箱。
+    /// 理想起跳 = origin + index * cycle；再加 ±100ms 抖动，并钳在理想±150ms 内。
     /// </summary>
+    void ScheduleNextJump(Transform visual)
+    {
+        if (!rhythms.TryGetValue(visual, out RhythmState rhythm))
+        {
+            rhythm = new RhythmState
+            {
+                origin = Time.time - BobDuration,
+                nextJumpIndex = 1,
+            };
+        }
+
+        float ideal = rhythm.origin + rhythm.nextJumpIndex * CyclePeriod;
+        float scheduled = ideal + Random.Range(-GroundRestJitterSeconds, GroundRestJitterSeconds);
+        scheduled = Mathf.Clamp(scheduled, ideal - MaxPhaseDriftSeconds, ideal + MaxPhaseDriftSeconds);
+        // 若已错过窗口，马上跳，下一拍仍按绝对锚点回正
+        nextJumpAllowedAt[visual] = Mathf.Max(Time.time, scheduled);
+
+        rhythm.nextJumpIndex++;
+        rhythms[visual] = rhythm;
+    }
+
     static Transform ResolveItemVisual(Transform root)
     {
         if (root == null) return null;
@@ -150,48 +282,23 @@ public class HeartbeatBobManager : MonoBehaviour
         to.sharedMaterial = from.sharedMaterial;
     }
 
-    void BeginBob(Transform visual)
-    {
-        if (visual == null) return;
-
-        float lossyY = Mathf.Abs(visual.lossyScale.y);
-        float localHeight = lossyY > 0.0001f ? BobHeightWorld / lossyY : BobHeightWorld;
-
-        if (activeBobs.TryGetValue(visual, out BobState existing))
-        {
-            // 节拍重叠：从静止位重新起跳
-            visual.localPosition = existing.restLocalPos;
-            existing.elapsed = 0f;
-            existing.localBobHeight = localHeight;
-            activeBobs[visual] = existing;
-            return;
-        }
-
-        activeBobs[visual] = new BobState
-        {
-            restLocalPos = visual.localPosition,
-            localBobHeight = localHeight,
-            elapsed = 0f,
-        };
-    }
-
     void TickBobs()
     {
         if (activeBobs.Count == 0) return;
 
-        finishedKeys.Clear();
+        scratchKeys.Clear();
         foreach (Transform visual in activeBobs.Keys)
-            finishedKeys.Add(visual);
+            scratchKeys.Add(visual);
 
-        for (int i = 0; i < finishedKeys.Count; i++)
+        for (int i = 0; i < scratchKeys.Count; i++)
         {
-            Transform visual = finishedKeys[i];
+            Transform visual = scratchKeys[i];
             if (!activeBobs.TryGetValue(visual, out BobState state))
                 continue;
 
             if (visual == null)
             {
-                activeBobs.Remove(visual);
+                ClearItemState(visual);
                 continue;
             }
 
@@ -204,6 +311,7 @@ public class HeartbeatBobManager : MonoBehaviour
             {
                 visual.localPosition = state.restLocalPos;
                 activeBobs.Remove(visual);
+                ScheduleNextJump(visual);
             }
             else
             {
@@ -211,6 +319,6 @@ public class HeartbeatBobManager : MonoBehaviour
             }
         }
 
-        finishedKeys.Clear();
+        scratchKeys.Clear();
     }
 }

@@ -28,6 +28,10 @@ public class SeekerController : NetworkBehaviour
     [Header("攻击硬直")]
     [Tooltip("攻击期间禁止移动的时长，约等于 Attack 动画长度")]
     public float attackMoveLockDuration = 0.6f;
+
+    [Header("攻击冷却（空格与鼠标共用）")]
+    public float attackCooldown = 0.5f;
+    float lastAttackTime = -999f;
     
     [Header("测试模式")]
     public bool testMode = false;           // 勾选后无需联网即可测试
@@ -166,10 +170,10 @@ public class SeekerController : NetworkBehaviour
             Investigate();
         }
         
-        // ===== 劈砍 (空格) =====
+        // ===== 劈砍 (空格)：身位 + 鼠标特效双点，与左键共享冷却 =====
         if (Input.GetKeyDown(testSlashKey) && !IsMoveLocked)
         {
-            Slash();
+            TryPerformAttack();
         }
         
         // ===== 更新朝向与动画 =====
@@ -329,6 +333,48 @@ public class SeekerController : NetworkBehaviour
             animator.SetTrigger(AttackHash);
     }
     
+    /// <summary>
+    /// 空格 / 鼠标共用：共享冷却 → BeginAttack → 鼠标处特效 → 双点 Slash。
+    /// </summary>
+    public bool TryPerformAttack()
+    {
+        if (!isLocalPlayerReady) return false;
+        if (!testMode && !isLocalPlayer) return false;
+        if (IsMoveLocked) return false;
+        if (Time.time - lastAttackTime < attackCooldown) return false;
+
+        lastAttackTime = Time.time;
+        BeginAttack();
+
+        Vector2 mouseWorld = GetMouseWorldPosition();
+        SlashVfxPresenter.Ensure();
+        SeekerAttackEffect.Spawn(mouseWorld);
+
+        if (testMode)
+        {
+            Debug.Log($"🧪 [测试模式] 劈砍 effect={mouseWorld}");
+            return true;
+        }
+
+        Debug.Log($"⚔️ 劈砍 身位+鼠标 effect={mouseWorld}");
+
+        if (GameContract.IsBound)
+            GameContract.Commands.Slash(mouseWorld);
+        else
+            Debug.Log("⚠️ 契约未绑定，模拟劈砍");
+
+        return true;
+    }
+
+    static Vector2 GetMouseWorldPosition()
+    {
+        Camera cam = Camera.main;
+        if (cam == null)
+            return Vector2.zero;
+        Vector3 p = cam.ScreenToWorldPoint(Input.mousePosition);
+        return new Vector2(p.x, p.y);
+    }
+
     void Investigate()
     {
         if (testMode)
@@ -338,40 +384,17 @@ public class SeekerController : NetworkBehaviour
         }
         
         if (!isLocalPlayer) return;
-        
-        Debug.Log("🔍 F 调查");
+
+        Vector2 mouseWorld = GetMouseWorldPosition();
+        Debug.Log($"🔍 F 调查 mouse={mouseWorld}");
         
         if (GameContract.IsBound)
         {
-            GameContract.Commands.Investigate();
+            GameContract.Commands.Investigate(mouseWorld);
         }
         else
         {
             Debug.Log("⚠️ 契约未绑定，模拟调查");
-        }
-    }
-    
-    void Slash()
-    {
-        BeginAttack();
-
-        if (testMode)
-        {
-            Debug.Log("🧪 [测试模式] 劈砍");
-            return;
-        }
-        
-        if (!isLocalPlayer) return;
-        
-        Debug.Log("⚔️ 空格 劈砍");
-        
-        if (GameContract.IsBound)
-        {
-            GameContract.Commands.Slash();
-        }
-        else
-        {
-            Debug.Log("⚠️ 契约未绑定，模拟劈砍");
         }
     }
     
@@ -382,5 +405,8 @@ public class SeekerController : NetworkBehaviour
             Gizmos.color = Color.green;
             Gizmos.DrawWireSphere(groundCheckPoint.position, groundCheckRadius);
         }
+
+        Gizmos.color = Color.red;
+        Gizmos.DrawWireSphere(transform.position, slashRange);
     }
 }

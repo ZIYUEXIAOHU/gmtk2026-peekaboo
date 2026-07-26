@@ -25,7 +25,13 @@ public static class GameConstants
     // ---- 交互范围（数值可调，但只在此处改）----
     /// <summary>探测圈 / F 调查范围（世界单位）。角色根节点约 3.5×4，过小会导致「贴脸也调查不到」。</summary>
     public const float InvestigateRange = 5.0f;
-    public const float SlashRange = 2.0f;         // 空格劈砍范围
+    /// <summary>F 调查：鼠标判定半径（物品约 3×3.4，取半幅量级）。</summary>
+    public const float InvestigateCursorPickRadius = 2.0f;
+    public const float SlashRange = 2.0f;         // 空格/身位劈砍范围
+    /// <summary>鼠标攻击特效圆心半径（与身位圈并集裁定鬼魂）。</summary>
+    public const float MouseSlashRange = 2.0f;
+    /// <summary>鼠标特效点相对 Seeker 的最大距离（防恶意远程）。</summary>
+    public const float MouseSlashMaxDistance = 40f;
 
     // ---- 鬼魂 ----
     // 鬼魂恢复时机 = 下一次随机变化，无独立时长；此处不定义恢复时间

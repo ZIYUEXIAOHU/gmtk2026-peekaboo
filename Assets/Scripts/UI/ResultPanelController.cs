@@ -29,6 +29,16 @@ public class ResultPanelController : MonoBehaviour
     
     private List<GameObject> scoreItems = new List<GameObject>();
     private int gameNumber = 0;
+    private bool eventsSubscribed;
+    private bool resultShown;
+    private IGameEvents boundEvents;
+    private CanvasGroup canvasGroup;
+    
+    void Awake()
+    {
+        EnsureCanvasGroup();
+        SetPanelVisible(false);
+    }
     
     void Start()
     {
@@ -38,39 +48,70 @@ public class ResultPanelController : MonoBehaviour
         if (lobbyBtn != null)
             lobbyBtn.onClick.AddListener(OnLobbyClicked);
         
-        SubscribeEvents();
+        TrySubscribeEvents();
+        TryShowFromState();
     }
     
-    void SubscribeEvents()
+    void Update()
     {
-        try
-        {
-            if (GameContract.IsBound)
-            {
-                GameContract.Events.OnGameEnded += OnGameEnded;
-                Debug.Log("✅ ResultPanelController 订阅 OnGameEnded 成功");
-            }
-        }
-        catch (System.Exception e)
-        {
-            Debug.LogWarning($"订阅事件失败：{e.Message}");
-        }
+        if (!eventsSubscribed)
+            TrySubscribeEvents();
+        
+        if (!resultShown)
+            TryShowFromState();
+    }
+    
+    void TrySubscribeEvents()
+    {
+        if (eventsSubscribed && ReferenceEquals(boundEvents, GameContract.Events))
+            return;
+        
+        if (!GameContract.IsBound || GameContract.Events == null)
+            return;
+        
+        UnsubscribeEvents();
+        boundEvents = GameContract.Events;
+        boundEvents.OnGameEnded += OnGameEnded;
+        eventsSubscribed = true;
+        Debug.Log("✅ ResultPanelController 订阅 OnGameEnded 成功");
+        
+        TryShowFromState();
+    }
+    
+    void UnsubscribeEvents()
+    {
+        if (!eventsSubscribed) return;
+        
+        if (boundEvents != null)
+            boundEvents.OnGameEnded -= OnGameEnded;
+        else if (GameContract.IsBound && GameContract.Events != null)
+            GameContract.Events.OnGameEnded -= OnGameEnded;
+        
+        boundEvents = null;
+        eventsSubscribed = false;
     }
     
     void OnDestroy()
     {
-        try
-        {
-            if (GameContract.IsBound)
-            {
-                GameContract.Events.OnGameEnded -= OnGameEnded;
-            }
-        }
-        catch { }
+        UnsubscribeEvents();
+    }
+    
+    /// <summary>
+    /// 若已错过 RpcGameEnded（晚订阅 / 重连），从 State 补开结算面板。
+    /// </summary>
+    void TryShowFromState()
+    {
+        if (resultShown) return;
+        if (!GameContract.IsBound || GameContract.State == null) return;
+        if (GameContract.State.Phase != GamePhase.Ended) return;
+        
+        OnGameEnded(GameContract.State.Result);
     }
     
     void OnGameEnded(MatchResult result)
     {
+        if (resultShown) return;
+        
         Debug.Log($"🏆 收到结算事件: {result.result}, 存活: {result.survivors}, 用时: {result.duration}s");
         
         List<IPlayerStateReadonly> players = new List<IPlayerStateReadonly>();
@@ -88,7 +129,8 @@ public class ResultPanelController : MonoBehaviour
     
     public void ShowResult(MatchResult result, List<IPlayerStateReadonly> players)
     {
-        gameObject.SetActive(true);
+        resultShown = true;
+        SetPanelVisible(true);
         
         if (gameUI != null)
             gameUI.SetActive(false);
@@ -104,13 +146,15 @@ public class ResultPanelController : MonoBehaviour
         if (capturedText != null)
         {
             int captured = 0;
-            int total = players?.Count ?? 0;
+            int totalHiders = 0;
             foreach (var p in players)
             {
-                if (p != null && p.Role == PlayerRole.Hider && p.HiderState == HiderState.Captured)
+                if (p == null || p.Role != PlayerRole.Hider) continue;
+                totalHiders++;
+                if (p.HiderState == HiderState.Captured)
                     captured++;
             }
-            capturedText.text = $"CAPTURED: {captured}/{total}";
+            capturedText.text = $"CAPTURED: {captured}/{totalHiders}";
         }
         
         // ===== BROKEN: 12 (3/9) =====
@@ -159,7 +203,7 @@ public class ResultPanelController : MonoBehaviour
             }
             else if (result.result == GameResult.SeekersWin)
             {
-                titleResult.text = "FAIL";
+                titleResult.text = "WIN";
                 titleResult.color = new Color(0.9f, 0.3f, 0.2f);
             }
             else
@@ -169,10 +213,10 @@ public class ResultPanelController : MonoBehaviour
             }
         }
         
-        UpdateScoreList(players);
+        UpdateScoreList(players, result);
     }
     
-    void UpdateScoreList(List<IPlayerStateReadonly> players)
+    void UpdateScoreList(List<IPlayerStateReadonly> players, MatchResult result)
     {
         foreach (var item in scoreItems)
         {
@@ -192,31 +236,24 @@ public class ResultPanelController : MonoBehaviour
         
         if (players == null || players.Count == 0) return;
         
-        List<IPlayerStateReadonly> aliveList = new List<IPlayerStateReadonly>();
-        List<IPlayerStateReadonly> lostList = new List<IPlayerStateReadonly>();
-        
         foreach (var player in players)
         {
             if (player == null) continue;
-            bool isAlive = player.Role == PlayerRole.Hider && player.HiderState != HiderState.Captured;
-            if (isAlive)
-                aliveList.Add(player);
-            else
-                lostList.Add(player);
-        }
-        
-        foreach (var player in aliveList)
-        {
-            CreateScoreItem(player, true);
-        }
-        
-        foreach (var player in lostList)
-        {
-            CreateScoreItem(player, false);
+            bool won = DidPlayerWin(player, result);
+            CreateScoreItem(player, won);
         }
     }
     
-    void CreateScoreItem(IPlayerStateReadonly player, bool isAlive)
+    static bool DidPlayerWin(IPlayerStateReadonly player, MatchResult result)
+    {
+        if (result.result == GameResult.HidersWin)
+            return player.Role == PlayerRole.Hider && player.HiderState != HiderState.Captured;
+        if (result.result == GameResult.SeekersWin)
+            return player.Role == PlayerRole.Seeker;
+        return false;
+    }
+    
+    void CreateScoreItem(IPlayerStateReadonly player, bool won)
     {
         GameObject item = Instantiate(scoreItemPrefab, scoreListParent);
         
@@ -228,7 +265,7 @@ public class ResultPanelController : MonoBehaviour
         
         if (iconImage != null)
         {
-            if (isAlive)
+            if (won)
             {
                 iconImage.sprite = aliveSprite;
                 iconImage.color = Color.white;
@@ -263,10 +300,10 @@ public class ResultPanelController : MonoBehaviour
             }
         }
         
-        // ===== 输赢：WIN / LOST（根据存活状态） =====
+        // ===== 输赢：WIN / LOST =====
         if (resultText != null)
         {
-            if (isAlive)
+            if (won)
             {
                 resultText.text = "WIN";
                 resultText.color = new Color(0.2f, 0.8f, 0.2f);
@@ -286,11 +323,31 @@ public class ResultPanelController : MonoBehaviour
         scoreItems.Add(item);
     }
     
+    void EnsureCanvasGroup()
+    {
+        if (canvasGroup == null)
+            canvasGroup = GetComponent<CanvasGroup>();
+        if (canvasGroup == null)
+            canvasGroup = gameObject.AddComponent<CanvasGroup>();
+    }
+    
+    void SetPanelVisible(bool visible)
+    {
+        EnsureCanvasGroup();
+        canvasGroup.alpha = visible ? 1f : 0f;
+        canvasGroup.interactable = visible;
+        canvasGroup.blocksRaycasts = visible;
+        
+        // 保持 GameObject 始终激活，以便订阅与补开结算；仅控制可见性
+        if (!gameObject.activeSelf)
+            gameObject.SetActive(true);
+    }
+    
     void OnMainMenuClicked()
     {
         Debug.Log("🏠 返回主菜单");
         
-        gameObject.SetActive(false);
+        SetPanelVisible(false);
         
         if (GameContract.IsRoomBound)
         {
@@ -309,7 +366,7 @@ public class ResultPanelController : MonoBehaviour
     {
         Debug.Log("🚪 返回大厅");
         
-        gameObject.SetActive(false);
+        SetPanelVisible(false);
         
         if (gameUI != null)
             gameUI.SetActive(true);

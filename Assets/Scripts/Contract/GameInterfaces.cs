@@ -19,6 +19,7 @@
 
 using System;
 using System.Collections.Generic;
+using UnityEngine;
 
 /// <summary>全局对局状态（程序 1 权威，程序 2 只读，用于 HUD/流程界面）。</summary>
 public interface IGameStateReadonly
@@ -82,12 +83,12 @@ public interface IGameCommands
     void PlaceItem();
 
     // ---- 抓捕者 ----
-    /// <summary>F 调查。程序 1 选取范围内最近的可调查物体裁定，结果通过 OnInvestigated 广播。
-    /// 拒绝原因：WrongPhase / WrongRole。</summary>
-    void Investigate();
-    /// <summary>空格劈砍。程序 1 裁定命中，结果通过 OnSlashed / OnCaptured 广播。
-    /// 拒绝原因：WrongPhase / WrongRole。</summary>
-    void Slash();
+    /// <summary>F 调查。程序 1 在探测圈内按鼠标位置选取单个可调查物体裁定，结果通过 OnInvestigated 广播。
+    /// 拒绝原因：WrongPhase / WrongRole / InvalidTarget。</summary>
+    void Investigate(Vector2 mouseWorldPosition);
+    /// <summary>劈砍（空格/鼠标）。程序 1 在身位与 effectWorldPosition 两圆裁定鬼魂，
+    /// 结果通过 OnSlashed / OnCaptured 广播。拒绝原因：WrongPhase / WrongRole。</summary>
+    void Slash(Vector2 effectWorldPosition);
 }
 
 /// <summary>程序 1 → 程序 2 的事件广播。程序 2 只做表现（VFX/音效/UI），不改游戏状态。</summary>

@@ -1,5 +1,5 @@
 // ============================================================
-// 物理层约定：玩家互不碰撞；放置物仅与躲藏者固体碰撞。
+// 物理层约定：玩家互不碰撞；放置物仅与躲藏者（及地面/场景）固体碰撞。
 // ============================================================
 
 using UnityEngine;
@@ -19,13 +19,15 @@ public static class CollisionLayers
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
     static void InitLayerCollisionMatrix() => EnsureCollisionMatrix();
 
-    /// <summary>可重复调用；保证层忽略矩阵生效。</summary>
+    /// <summary>可重复调用；保证层忽略 / HiderItem 白名单生效。</summary>
     public static void EnsureCollisionMatrix()
     {
         int hider = LayerMask.NameToLayer(Hider);
         int seeker = LayerMask.NameToLayer(Seeker);
         int item = LayerMask.NameToLayer(HiderItem);
         int player = LayerMask.NameToLayer(Player);
+        int ground = LayerMask.NameToLayer(Ground);
+        int defaultLayer = LayerMask.NameToLayer(Default);
 
         if (hider < 0 || seeker < 0 || item < 0)
         {
@@ -43,12 +45,22 @@ public static class CollisionLayers
             Physics2D.IgnoreLayerCollision(player, player, true);
             Physics2D.IgnoreLayerCollision(player, hider, true);
             Physics2D.IgnoreLayerCollision(player, seeker, true);
-            Physics2D.IgnoreLayerCollision(item, player, true);
         }
 
-        // 放置物不与抓捕者、其它放置物碰撞（只留给躲藏者）
+        // HiderItem 白名单：只与 Hider、Ground、Default 碰撞
+        // （Seeker/Player/其它放置物自然不在掩码内，无需再靠排除 Default 兜底）
+        int itemMask = 1 << hider;
+        if (ground >= 0)
+            itemMask |= 1 << ground;
+        if (defaultLayer >= 0)
+            itemMask |= 1 << defaultLayer;
+        Physics2D.SetLayerCollisionMask(item, itemMask);
+
+        // 双保险：显式忽略 Seeker / Player / 放置物互撞
         Physics2D.IgnoreLayerCollision(item, seeker, true);
         Physics2D.IgnoreLayerCollision(item, item, true);
+        if (player >= 0)
+            Physics2D.IgnoreLayerCollision(item, player, true);
     }
 
     public static void ApplyPlayerRoleLayer(GameObject go, PlayerRole role)
@@ -94,8 +106,9 @@ public static class CollisionLayers
             return;
 
         col.isTrigger = false;
-        // 显式排除抓捕者等；不依赖仅 IgnoreLayerCollision（角色层偶发未切到 Seeker 时仍会撞 Default/Player）
-        col.excludeLayers = Mask(Seeker, Player, HiderItem, Default);
+        // 碰撞范围交给 SetLayerCollisionMask；此处不再排除 Default（以免误伤未切层的 Hider）
+        col.excludeLayers = 0;
+        col.includeLayers = 0;
         IgnoreColliderAgainstAllSeekers(col);
     }
 
@@ -116,7 +129,7 @@ public static class CollisionLayers
         if (col == null)
             return;
 
-        // 躲藏者仍与 HiderItem 碰撞；只排除其它玩家
+        // 只排除其它玩家；绝不排除 HiderItem
         col.excludeLayers = Mask(Hider, Seeker, Player);
     }
 

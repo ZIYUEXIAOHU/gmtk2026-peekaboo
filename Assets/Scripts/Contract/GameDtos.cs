@@ -79,13 +79,14 @@ public struct TransformInfo
     public double invulnerableUntil;
 }
 
-/// <summary>劈砍结果（空格）。</summary>
+/// <summary>劈砍结果（身位 + 鼠标特效双点）。</summary>
 public struct SlashInfo
 {
     public uint seekerNetId;
     public bool hitGhost;      // true = 砍中鬼魂 → 触发 CaptureInfo
     public uint targetNetId;   // 砍中的目标（未命中为 0）
-    public Vector2 position;   // 劈砍位置（程序 2 做特效）
+    public Vector2 position;   // Seeker 身位（兼容旧用法）
+    public Vector2 effectPosition; // 鼠标特效世界坐标（程序 2 播特效）
 }
 
 /// <summary>捕获成功（劈砍命中鬼魂后由程序 1 发出）。</summary>

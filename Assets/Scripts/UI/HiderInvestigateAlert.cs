@@ -9,13 +9,14 @@ using UnityEngine.UI;
 public class HiderInvestigateAlert : MonoBehaviour
 {
     const float AlertDuration = 0.6f;
-    const float EdgeThickness = 0.22f; // 相对较短边的比例
+    const float EdgeThicknessRatio = 0.18f; // 相对较短边
 
     static HiderInvestigateAlert instance;
 
     bool subscribed;
     IGameEvents boundEvents;
     CanvasGroup canvasGroup;
+    RectTransform canvasRect;
     RectTransform edgeRect;
     Image edgeImage;
     float alertRemaining;
@@ -40,8 +41,13 @@ public class HiderInvestigateAlert : MonoBehaviour
         canvas.renderMode = RenderMode.ScreenSpaceOverlay;
         canvas.sortingOrder = 850;
 
-        canvasGo.AddComponent<CanvasScaler>().uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+        CanvasScaler scaler = canvasGo.AddComponent<CanvasScaler>();
+        scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+        scaler.referenceResolution = new Vector2(1920f, 1080f);
+        scaler.matchWidthOrHeight = 0.5f;
         canvasGo.AddComponent<GraphicRaycaster>();
+
+        canvasRect = canvasGo.GetComponent<RectTransform>();
 
         canvasGroup = canvasGo.AddComponent<CanvasGroup>();
         canvasGroup.alpha = 0f;
@@ -54,13 +60,15 @@ public class HiderInvestigateAlert : MonoBehaviour
         edgeImage.raycastTarget = false;
         edgeImage.sprite = CreateGradientSprite();
         edgeImage.type = Image.Type.Simple;
-        edgeImage.color = new Color(1f, 0.15f, 0.1f, 1f);
+        edgeImage.color = new Color(1f, 0.12f, 0.08f, 1f);
 
         edgeRect = edgeImage.rectTransform;
+        // 锚点在画布中心；pivot 在条的外侧，贴边后条向屏幕内侧延伸
         edgeRect.anchorMin = new Vector2(0.5f, 0.5f);
         edgeRect.anchorMax = new Vector2(0.5f, 0.5f);
         edgeRect.pivot = new Vector2(1f, 0.5f);
-        ResizeEdge();
+        edgeRect.anchoredPosition = Vector2.zero;
+        edgeRect.sizeDelta = new Vector2(100f, 200f);
     }
 
     Sprite CreateGradientSprite()
@@ -75,7 +83,7 @@ public class HiderInvestigateAlert : MonoBehaviour
         {
             // pivot 在 x=w（外侧）：外侧不透明，朝中心（x=0）透明
             float t = x / (float)(w - 1);
-            float a = Mathf.Pow(t, 1.6f);
+            float a = Mathf.Pow(t, 1.4f);
             Color c = new Color(1f, 1f, 1f, a);
             for (int y = 0; y < h; y++)
                 gradientTex.SetPixel(x, y, c);
@@ -89,20 +97,34 @@ public class HiderInvestigateAlert : MonoBehaviour
             100f);
     }
 
-    void ResizeEdge()
+    void GetCanvasSize(out float width, out float height)
     {
-        if (edgeRect == null) return;
+        if (canvasRect != null)
+        {
+            // Overlay + Scaler 下 pixelRect 始终对应当前屏幕像素，再换算到 canvas 本地单位更稳
+            Rect pixel = canvasRect.rect;
+            if (pixel.width > 1f && pixel.height > 1f)
+            {
+                width = pixel.width;
+                height = pixel.height;
+                return;
+            }
+        }
 
-        RectTransform canvasRt = edgeRect.parent as RectTransform;
-        float screenW = canvasRt != null ? canvasRt.rect.width : Screen.width;
-        float screenH = canvasRt != null ? canvasRt.rect.height : Screen.height;
-        float halfDiag = Mathf.Sqrt(screenW * screenW + screenH * screenH) * 0.5f;
-        float thickness = Mathf.Min(screenW, screenH) * EdgeThickness;
+        width = Screen.width;
+        height = Screen.height;
+    }
 
-        edgeRect.sizeDelta = new Vector2(thickness, halfDiag * 2f);
-        edgeRect.pivot = new Vector2(1f, 0.5f);
-        float edgeDist = Mathf.Min(screenW, screenH) * 0.5f;
-        edgeRect.anchoredPosition = new Vector2(edgeDist, 0f);
+    /// <summary>
+    /// 从画布中心沿 dir 射线，与屏幕矩形边界求交，得到贴边位置。
+    /// </summary>
+    static Vector2 EdgePointOnRect(Vector2 dir, float halfW, float halfH)
+    {
+        dir = dir.normalized;
+        float sx = Mathf.Abs(dir.x) < 1e-5f ? float.PositiveInfinity : halfW / Mathf.Abs(dir.x);
+        float sy = Mathf.Abs(dir.y) < 1e-5f ? float.PositiveInfinity : halfH / Mathf.Abs(dir.y);
+        float t = Mathf.Min(sx, sy);
+        return dir * t;
     }
 
     void Update()
@@ -196,19 +218,24 @@ public class HiderInvestigateAlert : MonoBehaviour
 
     void ShowAlert(Vector2 worldDir)
     {
-        ResizeEdge();
+        if (edgeRect == null) return;
 
-        float angle = Mathf.Atan2(worldDir.y, worldDir.x) * Mathf.Rad2Deg;
-        if (edgeRect != null)
-        {
-            RectTransform canvasRt = edgeRect.parent as RectTransform;
-            float screenW = canvasRt != null ? canvasRt.rect.width : Screen.width;
-            float screenH = canvasRt != null ? canvasRt.rect.height : Screen.height;
-            float edgeDist = Mathf.Min(screenW, screenH) * 0.5f;
-            float rad = angle * Mathf.Deg2Rad;
-            edgeRect.anchoredPosition = new Vector2(Mathf.Cos(rad) * edgeDist, Mathf.Sin(rad) * edgeDist);
-            edgeRect.localEulerAngles = new Vector3(0f, 0f, angle);
-        }
+        GetCanvasSize(out float screenW, out float screenH);
+        float halfW = screenW * 0.5f;
+        float halfH = screenH * 0.5f;
+        Vector2 d = worldDir.normalized;
+
+        // 贴到屏幕矩形真正的边缘（不再用内切圆半径）
+        Vector2 edgePos = EdgePointOnRect(d, halfW, halfH);
+
+        float thickness = Mathf.Min(screenW, screenH) * EdgeThicknessRatio;
+        // 条沿切线方向要足够长，才能盖住该侧边缘
+        float length = Mathf.Max(screenW, screenH) * 1.15f;
+
+        edgeRect.sizeDelta = new Vector2(thickness, length);
+        edgeRect.pivot = new Vector2(1f, 0.5f);
+        edgeRect.anchoredPosition = edgePos;
+        edgeRect.localEulerAngles = new Vector3(0f, 0f, Mathf.Atan2(d.y, d.x) * Mathf.Rad2Deg);
 
         alertRemaining = AlertDuration;
         if (canvasGroup != null)

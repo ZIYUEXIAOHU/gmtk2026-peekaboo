@@ -4,7 +4,7 @@ using UnityEngine;
 /// <summary>
 /// 客户端表现：根据 RoomPlayer.disguiseItemId / hiderState 切换 Visual_Hider 外观与透明度，
 /// 并按伪装物品尺寸同步根节点 BoxCollider2D（与摆放物一致）。
-/// Ghost 态恢复躲藏者原型外观与默认碰撞箱，供 Seeker 劈砍。
+/// Ghost 态恢复躲藏者原型循环动画与默认碰撞箱，供 Seeker 劈砍。
 /// 挂在 RoomPlayerPrefab 根上；不依赖 NetworkBehaviour。
 /// </summary>
 public class HiderDisguiseVisual : MonoBehaviour
@@ -12,6 +12,8 @@ public class HiderDisguiseVisual : MonoBehaviour
     [Header("引用（可空，运行时自动查找）")]
     [SerializeField] RoomPlayer roomPlayer;
     [SerializeField] SpriteRenderer hiderSpriteRenderer;
+    [SerializeField] Animator hiderAnimator;
+    [SerializeField] HiderPrototypeFloat prototypeFloat;
     [SerializeField] BoxCollider2D bodyCollider;
     [SerializeField] ItemTable itemTable;
 
@@ -90,6 +92,24 @@ public class HiderDisguiseVisual : MonoBehaviour
             }
         }
 
+        if (hiderAnimator == null && hiderSpriteRenderer != null)
+            hiderAnimator = hiderSpriteRenderer.GetComponent<Animator>();
+        if (hiderAnimator == null)
+        {
+            Transform t = transform.Find("Visual_Hider");
+            if (t != null)
+                hiderAnimator = t.GetComponent<Animator>();
+        }
+
+        if (prototypeFloat == null && hiderSpriteRenderer != null)
+            prototypeFloat = hiderSpriteRenderer.GetComponent<HiderPrototypeFloat>();
+        if (prototypeFloat == null)
+        {
+            Transform t = transform.Find("Visual_Hider");
+            if (t != null)
+                prototypeFloat = t.GetComponent<HiderPrototypeFloat>();
+        }
+
         if (itemTable == null)
             itemTable = Resources.Load<ItemTable>("ItemTable");
     }
@@ -110,6 +130,7 @@ public class HiderDisguiseVisual : MonoBehaviour
 
         if (roomPlayer.role != PlayerRole.Hider)
         {
+            SetPrototypeLoop(false);
             RestoreDefaultCollider();
             RestoreDefaultVisualScale();
             return;
@@ -128,11 +149,18 @@ public class HiderDisguiseVisual : MonoBehaviour
                 // 伪装/隐身：套用物品外观与碰撞箱
                 Sprite sprite = ResolveSprite(roomPlayer.disguiseItemId);
                 if (sprite != null)
+                {
+                    SetPrototypeLoop(false);
                     hiderSpriteRenderer.sprite = sprite;
-                else if (defaultSprite != null)
-                    hiderSpriteRenderer.sprite = defaultSprite;
+                    ApplyVisualScaleToItemDisplay();
+                }
+                else
+                {
+                    // 无有效伪装贴图时回退原身循环
+                    SetPrototypeLoop(true);
+                    RestoreDefaultVisualScale();
+                }
 
-                ApplyVisualScaleToItemDisplay();
                 ApplyColliderForItem(roomPlayer.disguiseItemId, sprite);
 
                 if (roomPlayer.hiderState == HiderState.Disguised)
@@ -153,27 +181,44 @@ public class HiderDisguiseVisual : MonoBehaviour
                 break;
             }
             case HiderState.Ghost:
-                // 被调查命中：变回原型，全员可见，可被劈砍
-                if (defaultSprite != null)
-                    hiderSpriteRenderer.sprite = defaultSprite;
+                // 被调查命中：变回原型循环动画，全员可见，可被劈砍
+                SetPrototypeLoop(true);
                 RestoreDefaultVisualScale();
                 RestoreDefaultCollider();
                 c.a = 1f;
                 hiderSpriteRenderer.enabled = true;
                 break;
             case HiderState.Captured:
+                SetPrototypeLoop(false);
                 RestoreDefaultVisualScale();
                 RestoreDefaultCollider();
                 c.a = 0f;
                 hiderSpriteRenderer.enabled = false;
                 break;
             default:
+                SetPrototypeLoop(true);
                 c.a = 1f;
                 hiderSpriteRenderer.enabled = true;
                 break;
         }
 
         hiderSpriteRenderer.color = c;
+    }
+
+    /// <summary>
+    /// 原身眼睛循环 + 毛团漂浮：开 Animator/Float；伪装成物品时必须关掉，否则会覆盖物品贴图。
+    /// </summary>
+    void SetPrototypeLoop(bool enabled)
+    {
+        if (hiderAnimator != null && hiderAnimator.enabled != enabled)
+        {
+            hiderAnimator.enabled = enabled;
+            if (enabled)
+                hiderAnimator.Play(0, 0, 0f);
+        }
+
+        if (prototypeFloat != null && prototypeFloat.enabled != enabled)
+            prototypeFloat.enabled = enabled;
     }
 
     /// <summary>把 Visual_Hider 调到与放置物相同的世界尺度（GameConstants.ItemScale*）。</summary>
