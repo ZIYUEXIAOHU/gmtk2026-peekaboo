@@ -53,7 +53,7 @@ public class HiderController : NetworkBehaviour
             rb.useFullKinematicContacts = true;
         }
         
-        // ===== 确保 GroundCheck 存在 =====
+        // ===== 确保 GroundCheck 存在（位置由碰撞箱/变身脚本决定，勿写死）=====
         if (groundCheckPoint == null)
         {
             Transform existing = transform.Find("GroundCheck");
@@ -63,13 +63,22 @@ public class HiderController : NetworkBehaviour
             {
                 GameObject go = new GameObject("GroundCheck");
                 go.transform.SetParent(transform);
-                go.transform.localPosition = new Vector3(0, -0.5f, 0);
                 groundCheckPoint = go.transform;
             }
         }
-        
-        // ===== 强制设置位置 =====
-        groundCheckPoint.localPosition = new Vector3(0, -0.5f, 0);
+
+        // 初始贴合当前 BoxCollider2D 底边；之后变身由 HiderDisguiseVisual 同步
+        BoxCollider2D col = GetComponent<BoxCollider2D>();
+        if (col != null)
+        {
+            float bottom = col.offset.y - col.size.y * 0.5f;
+            groundCheckPoint.localPosition = new Vector3(col.offset.x, bottom - 0.02f, 0f);
+        }
+        else if (groundCheckPoint.localPosition == Vector3.zero)
+        {
+            groundCheckPoint.localPosition = new Vector3(0f, -0.5f, 0f);
+        }
+
         Debug.Log($"✅ GroundCheck 位置: {groundCheckPoint.localPosition}");
         
         // ===== 确保 groundLayer 包含 Ground 层 =====

@@ -24,6 +24,10 @@ public class SeekerController : NetworkBehaviour
     public Animator animator;
     public NetworkAnimator networkAnimator;
     public SpriteRenderer visualSpriteRenderer;
+
+    [Header("攻击硬直")]
+    [Tooltip("攻击期间禁止移动的时长，约等于 Attack 动画长度")]
+    public float attackMoveLockDuration = 0.6f;
     
     [Header("测试模式")]
     public bool testMode = false;           // 勾选后无需联网即可测试
@@ -35,6 +39,7 @@ public class SeekerController : NetworkBehaviour
     private bool isGrounded;
     private bool isLocalPlayerReady = false;
     private float facingDirection = 0f;
+    private float attackMoveLockUntil;
     
     void Start()
     {
@@ -133,8 +138,11 @@ public class SeekerController : NetworkBehaviour
         if (!isLocalPlayerReady) return;
         if (!testMode && !isLocalPlayer) return;
         
-        // ===== 移动 (A/D) =====
-        moveInput = Input.GetAxisRaw("Horizontal");
+        // ===== 移动 (A/D)；攻击硬直期间不可移动 =====
+        if (IsAttackMoveLocked)
+            moveInput = 0f;
+        else
+            moveInput = Input.GetAxisRaw("Horizontal");
         
         // ===== 调查 (F) =====
         if (Input.GetKeyDown(testInvestigateKey))
@@ -143,7 +151,7 @@ public class SeekerController : NetworkBehaviour
         }
         
         // ===== 劈砍 (空格) =====
-        if (Input.GetKeyDown(testSlashKey))
+        if (Input.GetKeyDown(testSlashKey) && !IsAttackMoveLocked)
         {
             Slash();
         }
@@ -160,7 +168,7 @@ public class SeekerController : NetworkBehaviour
         
         // ===== 水平移动 =====
         Vector2 velocity = rb.velocity;
-        velocity.x = moveInput * moveSpeed;
+        velocity.x = IsAttackMoveLocked ? 0f : moveInput * moveSpeed;
         rb.velocity = velocity;
         
         // ===== 检测地面 =====
@@ -203,6 +211,22 @@ public class SeekerController : NetworkBehaviour
         animator.SetFloat(FacingDirectionHash, facingDirection);
     }
 
+    public bool IsAttackMoveLocked => Time.time < attackMoveLockUntil;
+
+    /// <summary>播放攻击动画并进入移动硬直。空格劈砍 / 鼠标攻击共用。</summary>
+    public void BeginAttack()
+    {
+        TriggerAttackAnimation();
+        attackMoveLockUntil = Time.time + attackMoveLockDuration;
+        moveInput = 0f;
+        if (rb != null)
+        {
+            Vector2 velocity = rb.velocity;
+            velocity.x = 0f;
+            rb.velocity = velocity;
+        }
+    }
+
     void TriggerAttackAnimation()
     {
         CacheAnimationRefs();
@@ -236,7 +260,7 @@ public class SeekerController : NetworkBehaviour
     
     void Slash()
     {
-        TriggerAttackAnimation();
+        BeginAttack();
 
         if (testMode)
         {

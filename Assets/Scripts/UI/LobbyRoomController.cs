@@ -100,11 +100,16 @@ public class LobbyRoomController : MonoBehaviour
         else
             CalculateRoleSlots(Mathf.Max(1, GetSceneRoomPlayers().Length));
         
-        hiderBtn.onClick.AddListener(() => SelectRole(PlayerRole.Hider));
-        randomBtn.onClick.AddListener(SelectRandomRole);
-        seekerBtn.onClick.AddListener(() => SelectRole(PlayerRole.Seeker));
-        readyBtn.onClick.AddListener(ToggleReady);
-        startGameBtn.onClick.AddListener(HostStartGame);
+        if (hiderBtn != null)
+            hiderBtn.onClick.AddListener(() => SelectRole(PlayerRole.Hider));
+        if (randomBtn != null)
+            randomBtn.onClick.AddListener(SelectRandomRole);
+        if (seekerBtn != null)
+            seekerBtn.onClick.AddListener(() => SelectRole(PlayerRole.Seeker));
+        if (readyBtn != null)
+            readyBtn.onClick.AddListener(ToggleReady);
+        if (startGameBtn != null)
+            startGameBtn.onClick.AddListener(HostStartGame);
         
         if (reselectBtn != null)
         {
@@ -118,6 +123,43 @@ public class LobbyRoomController : MonoBehaviour
         UpdatePlayerList();
         RefreshRoomCodeDisplay();
         StartCoroutine(DelayedContractRefresh());
+        StartCoroutine(TryApplyPreferredRole());
+    }
+
+    /// <summary>
+    /// 主菜单创建房间时点了 HIDER/HUNTER，会写入 PreferredRole；进 GameScene 后自动选角。
+    /// </summary>
+    IEnumerator TryApplyPreferredRole()
+    {
+        if (!PlayerPrefs.HasKey(MainMenuController.PrefPreferredRole))
+            yield break;
+
+        PlayerRole preferred = (PlayerRole)PlayerPrefs.GetInt(MainMenuController.PrefPreferredRole, (int)PlayerRole.None);
+        PlayerPrefs.DeleteKey(MainMenuController.PrefPreferredRole);
+        PlayerPrefs.Save();
+
+        if (preferred != PlayerRole.Hider && preferred != PlayerRole.Seeker)
+            yield break;
+
+        // 等本地玩家与契约就绪
+        for (int i = 0; i < 20; i++)
+        {
+            yield return new WaitForSeconds(0.15f);
+            TrySubscribeGameEvents();
+
+            if (GetLocalRoomPlayer() == null)
+                continue;
+
+            // 契约路径：需 IsBound；无契约时走本地 SpawnPlayerRole
+            if (GameContract.IsBound || NetworkServer.active)
+            {
+                Debug.Log($"[LobbyRoomController] 应用创建时偏好身份：{preferred}");
+                SelectRole(preferred);
+                yield break;
+            }
+        }
+
+        Debug.LogWarning("[LobbyRoomController] 未能自动应用偏好身份（本地玩家/契约未就绪）");
     }
 
     IEnumerator DelayedContractRefresh()
@@ -952,7 +994,20 @@ public class LobbyRoomController : MonoBehaviour
     
     void UpdateStatusText(string msg)
     {
-        if (statusText == null) return;
+        if (statusText == null)
+        {
+            // GameScene 里 statusText 可能未绑；尝试按名字找回，避免选角无文字反馈
+            var found = GameObject.Find("StatusText");
+            if (found != null)
+                statusText = found.GetComponent<TextMeshProUGUI>();
+        }
+
+        if (statusText == null)
+        {
+            Debug.Log($"[LobbyStatus] {msg}");
+            RefreshRoomCodeDisplay();
+            return;
+        }
 
         string code = GetCurrentRoomCode();
         // 无独立短码控件时，把房间码拼进状态栏，避免被后续状态覆盖后看不到

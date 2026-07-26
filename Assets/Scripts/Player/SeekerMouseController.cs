@@ -103,6 +103,10 @@ public class SeekerMouseController : NetworkBehaviour
     void Attack()
     {
         if (Time.time - lastAttackTime < attackCooldown) return;
+
+        SeekerController seeker = GetComponentInParent<SeekerController>();
+        if (seeker != null && seeker.IsAttackMoveLocked)
+            return;
         
         Vector3 mousePos = Camera.main.ScreenToWorldPoint(Input.mousePosition);
         Vector2 attackPoint = new Vector2(mousePos.x, mousePos.y);
@@ -119,6 +123,8 @@ public class SeekerMouseController : NetworkBehaviour
                 // ===== 攻击命中躲藏者 =====
                 lastAttackTime = Time.time;
                 Debug.Log($"⚔️ 攻击躲藏者: {rp.playerName}");
+
+                seeker?.BeginAttack();
                 
                 if (GameContract.IsBound)
                 {
@@ -132,6 +138,8 @@ public class SeekerMouseController : NetworkBehaviour
         
         Debug.Log("💨 未命中");
         lastAttackTime = Time.time;
+        // 空挥也播攻击并硬直，避免边跑边挥
+        seeker?.BeginAttack();
     }
     
     void ShowAttackEffect(Vector2 position)
