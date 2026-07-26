@@ -336,7 +336,8 @@ public class ResultPanelController : MonoBehaviour
         Image iconImage = FindChildComponent<Image>(item.transform, "Image", "IconImage");
         TextMeshProUGUI nameText = FindChildComponent<TextMeshProUGUI>(item.transform, "PlayerNameText", "NameText");
         TextMeshProUGUI teamText = FindChildComponent<TextMeshProUGUI>(item.transform, "RoleNameText", "TeamText");
-        TextMeshProUGUI resultText = FindChildComponent<TextMeshProUGUI>(item.transform, "ResultText", "ScoreText");
+        TextMeshProUGUI scoreText = FindChildComponent<TextMeshProUGUI>(item.transform, "ScoreText");
+        TextMeshProUGUI resultText = FindChildComponent<TextMeshProUGUI>(item.transform, "ResultText");
         TextMeshProUGUI timeText = FindChildComponent<TextMeshProUGUI>(item.transform, "TimeText");
         
         if (iconImage != null)
@@ -376,7 +377,11 @@ public class ResultPanelController : MonoBehaviour
                 teamText.color = Color.gray;
             }
         }
+
+        if (scoreText != null)
+            scoreText.text = $"{player.Score} pts";
         
+        // 独立 ResultText 时显示 WIN/LOST；ScoreText 专用于分数（胜负已由 Win/Lost 面板分区体现）
         if (resultText != null)
         {
             if (won)
@@ -390,10 +395,16 @@ public class ResultPanelController : MonoBehaviour
                 resultText.color = Color.red;
             }
         }
-        
-        // 契约缺口：无 per-player survival / alive time（且当前预制体用 ScoreText 显示 WIN/LOST）
+
         if (timeText != null)
-            timeText.text = "00:00";
+        {
+            int surviveSeconds = player.Role == PlayerRole.Hider
+                ? player.Score / Mathf.Max(1, GameConstants.HiderScorePerSecond)
+                : 0;
+            int m = surviveSeconds / 60;
+            int s = surviveSeconds % 60;
+            timeText.text = $"{m:00}:{s:00}";
+        }
         
         scoreItems.Add(item);
     }

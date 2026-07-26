@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using Mirror;
 using UnityEngine;
@@ -10,6 +11,8 @@ using UnityEngine;
 /// </summary>
 public class RoomPlayer : NetworkBehaviour, IPlayerStateReadonly
 {
+    /// <summary>分数 SyncVar 落地后触发（服务端赋值与客户端同步均会回调），供 HUD 实时刷新。</summary>
+    public static event Action<RoomPlayer, int> ScoreChanged;
     [SyncVar(hook = nameof(OnPlayerNameChanged))]
     public string playerName = GameConstants.DefaultPlayerName;
 
@@ -36,7 +39,7 @@ public class RoomPlayer : NetworkBehaviour, IPlayerStateReadonly
     public bool isRoomHost = false;
 
     /// <summary>本局得分（程序 1 权威写入；UI 只读 Score）。</summary>
-    [SyncVar]
+    [SyncVar(hook = nameof(OnScoreSync))]
     public int score = 0;
 
     /// <summary>物品栏剩余队列，按顺序放置。
@@ -234,6 +237,11 @@ public class RoomPlayer : NetworkBehaviour, IPlayerStateReadonly
         LobbyRoomController lobby = FindObjectOfType<LobbyRoomController>();
         if (lobby != null)
             lobby.NotifyPlayerReadyChanged(this);
+    }
+
+    void OnScoreSync(int oldScore, int newScore)
+    {
+        ScoreChanged?.Invoke(this, newScore);
     }
 
     [Command]

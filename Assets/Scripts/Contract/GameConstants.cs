@@ -102,6 +102,8 @@ public static class GameConstants
     public const int SeekerScorePerInvestigate = 50;
     /// <summary>抓捕者：击杀一名鬼魂（捕获）+ 分。</summary>
     public const int SeekerScorePerKill = 50;
+    /// <summary>抓捕者：调查到放置物/诱饵 − 分（不低于 0）。</summary>
+    public const int SeekerScorePenaltyPlacedItem = 10;
     /// <summary>躲藏者：存活躲藏每满 1 秒 + 分（含 Ghost，Captured 后停止）。</summary>
     public const int HiderScorePerSecond = 2;
 
