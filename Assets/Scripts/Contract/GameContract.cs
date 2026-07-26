@@ -19,8 +19,12 @@ public static class GameContract
     public static IRoomCommands RoomCommands { get; private set; }
     public static IRoomEvents RoomEvents { get; private set; }
 
+    // ---- 音效 ----
+    public static IAudioService Audio { get; private set; }
+
     public static bool IsBound => State != null && Commands != null && Events != null;
     public static bool IsRoomBound => RoomState != null && RoomCommands != null && RoomEvents != null;
+    public static bool IsAudioBound => Audio != null;
 
     public static void Bind(IGameStateReadonly state, IGameCommands commands, IGameEvents events)
     {
@@ -46,6 +50,13 @@ public static class GameContract
         Debug.Log($"[GameContract] 绑定房间实现：{roomState.GetType().Name}");
     }
 
+    public static void BindAudio(IAudioService audio)
+    {
+        if (audio == null) throw new ArgumentNullException(nameof(audio));
+        Audio = audio;
+        Debug.Log($"[GameContract] 绑定音效实现：{audio.GetType().Name}");
+    }
+
     public static void Unbind()
     {
         State = null;
@@ -58,5 +69,10 @@ public static class GameContract
         RoomState = null;
         RoomCommands = null;
         RoomEvents = null;
+    }
+
+    public static void UnbindAudio()
+    {
+        Audio = null;
     }
 }

@@ -88,32 +88,53 @@ public class MainMenuController : MonoBehaviour
 
         EnsureJoinUiRefs();
         
-        // ===== 主菜单按钮 =====
+        // ===== 主菜单按钮（添加音效） =====
         if (joinGameBtn != null)
-            joinGameBtn.onClick.AddListener(OpenJoinPanel);
+            joinGameBtn.onClick.AddListener(() => {
+                PlayClick();
+                OpenJoinPanel();
+            });
         
         if (createGameBtn != null)
-            createGameBtn.onClick.AddListener(OpenCreatePanel);
+            createGameBtn.onClick.AddListener(() => {
+                PlayClick();
+                OpenCreatePanel();
+            });
         
         if (settingsBtn != null)
-            settingsBtn.onClick.AddListener(OpenSettingsPanel);
+            settingsBtn.onClick.AddListener(() => {
+                PlayClick();
+                OpenSettingsPanel();
+            });
         
         if (quitGameBtn != null)
-            quitGameBtn.onClick.AddListener(QuitGame);
+            quitGameBtn.onClick.AddListener(() => {
+                PlayClick();
+                QuitGame();
+            });
         
-        // ===== 加入面板按钮 =====
+        // ===== 加入面板按钮（添加音效） =====
         if (joinBtn != null)
-            joinBtn.onClick.AddListener(OnJoinClicked);
+            joinBtn.onClick.AddListener(() => {
+                PlayClick();
+                OnJoinClicked();
+            });
         
         if (joinBackBtn != null)
-            joinBackBtn.onClick.AddListener(CloseJoinPanel);
+            joinBackBtn.onClick.AddListener(() => {
+                PlayClick();
+                CloseJoinPanel();
+            });
 
         if (roomCodeInput != null)
             roomCodeInput.onEndEdit.AddListener(OnRoomCodeEndEdit);
         
-        // ===== 创建面板按钮 =====
+        // ===== 创建面板按钮（添加音效） =====
         if (createBackBtn != null)
-            createBackBtn.onClick.AddListener(CloseCreatePanel);
+            createBackBtn.onClick.AddListener(() => {
+                PlayClick();
+                CloseCreatePanel();
+            });
         
         // ===== 身份选择按钮 =====
         WireRoleButton(hiderBtn, PlayerRole.Hider);
@@ -121,9 +142,12 @@ public class MainMenuController : MonoBehaviour
         WireRoleButton(joinHiderBtn, PlayerRole.Hider);
         WireRoleButton(joinHunterBtn, PlayerRole.Seeker);
         
-        // ===== 设置面板按钮 =====
+        // ===== 设置面板按钮（添加音效） =====
         if (settingsBackBtn != null)
-            settingsBackBtn.onClick.AddListener(CloseSettingsPanel);
+            settingsBackBtn.onClick.AddListener(() => {
+                PlayClick();
+                CloseSettingsPanel();
+            });
         
         // ===== 音量绑定 =====
         if (masterVolumeSlider != null)
@@ -180,6 +204,24 @@ public class MainMenuController : MonoBehaviour
         return currentPlayerName;
     }
 
+    // ==================== 音效播放（通过契约） ====================
+
+    private void PlayClick()
+    {
+        if (GameContract.IsAudioBound)
+        {
+            GameContract.Audio.PlayClick();
+        }
+    }
+
+    private void PlayHover()
+    {
+        if (GameContract.IsAudioBound)
+        {
+            GameContract.Audio.PlayHover();
+        }
+    }
+
     // ==================== SlotFull 提示 ====================
     private void ShowSlotFullMessage(bool show)
     {
@@ -207,6 +249,8 @@ public class MainMenuController : MonoBehaviour
 
     public void OnRoleButtonHover(PlayerRole role)
     {
+        PlayHover();  // 悬停音效
+
         if (!GameContract.IsRoomBound || GameContract.RoomState == null) return;
         
         RoomInfo? foundRoom = GameContract.RoomState.FoundRoom;
@@ -884,21 +928,37 @@ public class MainMenuController : MonoBehaviour
     void LoadSettings()
     {
         float master = PlayerPrefs.GetFloat("MasterVolume", 0.8f);
-        float music = PlayerPrefs.GetFloat("MusicVolume", 0.8f);
-        float sfx = PlayerPrefs.GetFloat("SFXVolume", 0.8f);
+        float music = PlayerPrefs.GetFloat("MusicVolume", 0.3f);
+        float sfx = PlayerPrefs.GetFloat("SFXVolume", 0.6f);
         
         if (masterVolumeSlider != null) masterVolumeSlider.value = master;
         if (musicVolumeSlider != null) musicVolumeSlider.value = music;
         if (sfxVolumeSlider != null) sfxVolumeSlider.value = sfx;
         
-        AudioListener.volume = master;
+        // ===== 通过契约同步音量 =====
+        if (GameContract.IsAudioBound)
+        {
+            GameContract.Audio.SetMasterVolume(master);
+            GameContract.Audio.SetMusicVolume(music);
+            GameContract.Audio.SetSFXVolume(sfx);
+        }
+        else
+        {
+            AudioListener.volume = master;
+        }
     }
     
     void OnMasterVolumeChanged(float value)
     {
         if (masterVolumeText != null)
             masterVolumeText.text = Mathf.RoundToInt(value * 100) + "%";
-        AudioListener.volume = value;
+        
+        // ===== 通过契约设置音量 =====
+        if (GameContract.IsAudioBound)
+            GameContract.Audio.SetMasterVolume(value);
+        else
+            AudioListener.volume = value;
+        
         PlayerPrefs.SetFloat("MasterVolume", value);
     }
     
@@ -906,6 +966,10 @@ public class MainMenuController : MonoBehaviour
     {
         if (musicVolumeText != null)
             musicVolumeText.text = Mathf.RoundToInt(value * 100) + "%";
+        
+        if (GameContract.IsAudioBound)
+            GameContract.Audio.SetMusicVolume(value);
+        
         PlayerPrefs.SetFloat("MusicVolume", value);
     }
     
@@ -913,6 +977,10 @@ public class MainMenuController : MonoBehaviour
     {
         if (sfxVolumeText != null)
             sfxVolumeText.text = Mathf.RoundToInt(value * 100) + "%";
+        
+        if (GameContract.IsAudioBound)
+            GameContract.Audio.SetSFXVolume(value);
+        
         PlayerPrefs.SetFloat("SFXVolume", value);
     }
 }

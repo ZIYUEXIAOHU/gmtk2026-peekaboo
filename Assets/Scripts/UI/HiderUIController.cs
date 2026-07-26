@@ -107,6 +107,7 @@ public class HiderUIController : MonoBehaviour
             GameContract.Events.OnHiderTransformed += OnHiderTransformed;
             GameContract.Events.OnCaptured += OnCaptured;
             GameContract.Events.OnHiderRespawned += OnHiderRespawned;
+            GameContract.Events.OnHeartbeatPulse += OnHeartbeatPulse;  // ← 新增
             isSubscribed = true;
             Debug.Log("✅ HiderUIController 订阅契约事件成功");
         }
@@ -147,6 +148,7 @@ public class HiderUIController : MonoBehaviour
             GameContract.Events.OnHiderTransformed -= OnHiderTransformed;
             GameContract.Events.OnCaptured -= OnCaptured;
             GameContract.Events.OnHiderRespawned -= OnHiderRespawned;
+            GameContract.Events.OnHeartbeatPulse -= OnHeartbeatPulse;  // ← 新增
             isSubscribed = false;
         }
         catch { }
@@ -670,6 +672,26 @@ public class HiderUIController : MonoBehaviour
             transformTimer.text = "⏳ Ready to transform...";
             transformTimer.color = Color.yellow;
             transformTimer.gameObject.SetActive(true);
+        }
+    }
+    
+    // ==================== 心跳脉冲事件 ====================
+    
+    void OnHeartbeatPulse(HeartbeatPulse pulse)
+    {
+        if (!GameContract.IsAudioBound) return;
+
+        IPlayerStateReadonly local = GameContract.State?.LocalPlayer;
+        if (local == null || local.Role != PlayerRole.Hider) return;
+
+        // 获取本地位置
+        Vector2 localPos = transform.position;
+        float distance = Vector2.Distance(pulse.center, localPos);
+
+        // 如果在心跳范围内，播放心跳声
+        if (distance <= pulse.radius)
+        {
+            GameContract.Audio.PlayHeartbeat();
         }
     }
     

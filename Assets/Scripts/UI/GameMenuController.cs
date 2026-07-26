@@ -219,12 +219,19 @@ public class GameMenuController : MonoBehaviour
             escMenu.SetActive(true);
     }
     
-    // ==================== 音量控制 ====================
+    // ==================== 音量控制（通过契约） ====================
+    
     void OnMasterVolumeChanged(float value)
     {
         if (masterVolumeText != null)
             masterVolumeText.text = Mathf.RoundToInt(value * 100) + "%";
-        AudioListener.volume = value;
+        
+        // ===== 通过契约设置主音量 =====
+        if (GameContract.IsAudioBound)
+            GameContract.Audio.SetMasterVolume(value);
+        else
+            AudioListener.volume = value;
+        
         PlayerPrefs.SetFloat("MasterVolume", value);
     }
     
@@ -232,6 +239,11 @@ public class GameMenuController : MonoBehaviour
     {
         if (musicVolumeText != null)
             musicVolumeText.text = Mathf.RoundToInt(value * 100) + "%";
+        
+        // ===== 通过契约设置音乐音量 =====
+        if (GameContract.IsAudioBound)
+            GameContract.Audio.SetMusicVolume(value);
+        
         PlayerPrefs.SetFloat("MusicVolume", value);
     }
     
@@ -239,20 +251,35 @@ public class GameMenuController : MonoBehaviour
     {
         if (sfxVolumeText != null)
             sfxVolumeText.text = Mathf.RoundToInt(value * 100) + "%";
+        
+        // ===== 通过契约设置音效音量 =====
+        if (GameContract.IsAudioBound)
+            GameContract.Audio.SetSFXVolume(value);
+        
         PlayerPrefs.SetFloat("SFXVolume", value);
     }
     
     void LoadVolumes()
     {
         float master = PlayerPrefs.GetFloat("MasterVolume", 0.8f);
-        float music = PlayerPrefs.GetFloat("MusicVolume", 0.8f);
-        float sfx = PlayerPrefs.GetFloat("SFXVolume", 0.8f);
+        float music = PlayerPrefs.GetFloat("MusicVolume", 0.3f);
+        float sfx = PlayerPrefs.GetFloat("SFXVolume", 0.6f);
         
         if (masterVolumeSlider != null) masterVolumeSlider.value = master;
         if (musicVolumeSlider != null) musicVolumeSlider.value = music;
         if (sfxVolumeSlider != null) sfxVolumeSlider.value = sfx;
         
-        AudioListener.volume = master;
+        // ===== 通过契约同步音量 =====
+        if (GameContract.IsAudioBound)
+        {
+            GameContract.Audio.SetMasterVolume(master);
+            GameContract.Audio.SetMusicVolume(music);
+            GameContract.Audio.SetSFXVolume(sfx);
+        }
+        else
+        {
+            AudioListener.volume = master;
+        }
     }
     
     // ==================== 退出房间（遵循契约） ====================

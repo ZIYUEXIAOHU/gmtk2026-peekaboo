@@ -636,6 +636,15 @@ public class NetworkGameState : NetworkBehaviour, IGameStateReadonly, IGameComma
             noisePosition = target.position,
         };
 
+        // ===== 播放翻找声（全玩家） =====
+        RpcPlaySearchSound(target.position);
+
+        if (hitHider && hitPlayer != null)
+        {
+            // ===== 播放"嘭！"声（全玩家） =====
+            RpcPlayPopSound(target.position);
+        }
+
         // 2) 再触发 Event（全员）
         RpcInvestigated(info);
     }
@@ -691,6 +700,10 @@ public class NetworkGameState : NetworkBehaviour, IGameStateReadonly, IGameComma
                 seekerNetId = seeker.netId,
                 aliveHiders = alive,
             };
+
+            // ===== 播放命中声（全玩家） =====
+            RpcPlayHitSound(ghost.transform.position);
+
             // 2b) OnCaptured 全员
             RpcCaptured(captureInfo);
 
@@ -746,6 +759,9 @@ public class NetworkGameState : NetworkBehaviour, IGameStateReadonly, IGameComma
             hider.disguiseItemId = PickRandomDisguiseItemId(GameConstants.InvalidItemId);
         }
         SetPhase(GamePhase.Prep, GameConstants.PrepDuration);
+
+        // ===== 播放倒计时声（全玩家） =====
+        RpcPlayCountdownSound();
     }
 
     [Server]
@@ -1064,6 +1080,9 @@ public class NetworkGameState : NetworkBehaviour, IGameStateReadonly, IGameComma
             // 1) 先更新 State
             hider.disguiseItemId = newItemId;
             hider.hiderState = HiderState.Invisible;
+
+            // ===== 播放布谷鸟钟声（全玩家） =====
+            RpcPlayCuckooSound(hider.transform.position);
 
             // 2) 再触发 Event（全员）
             RpcHiderTransformed(new TransformInfo
@@ -1469,6 +1488,55 @@ public class NetworkGameState : NetworkBehaviour, IGameStateReadonly, IGameComma
 
     [ClientRpc]
     private void RpcHeartbeatPulse(HeartbeatPulse pulse) => OnHeartbeatPulse?.Invoke(pulse);
+
+    // ================================================================
+    // 音效 RPC 广播（全玩家）
+    // ================================================================
+
+    [ClientRpc]
+    private void RpcPlayCuckooSound(Vector3 position)
+    {
+        if (GameContract.IsAudioBound)
+        {
+            GameContract.Audio.PlayCuckoo(position);
+        }
+    }
+
+    [ClientRpc]
+    private void RpcPlayPopSound(Vector3 position)
+    {
+        if (GameContract.IsAudioBound)
+        {
+            GameContract.Audio.PlayPop(position);
+        }
+    }
+
+    [ClientRpc]
+    private void RpcPlaySearchSound(Vector3 position)
+    {
+        if (GameContract.IsAudioBound)
+        {
+            GameContract.Audio.PlaySearch(position);
+        }
+    }
+
+    [ClientRpc]
+    private void RpcPlayHitSound(Vector3 position)
+    {
+        if (GameContract.IsAudioBound)
+        {
+            GameContract.Audio.PlayHit(position);
+        }
+    }
+
+    [ClientRpc]
+    private void RpcPlayCountdownSound()
+    {
+        if (GameContract.IsAudioBound)
+        {
+            GameContract.Audio.PlayCountdown();
+        }
+    }
 
     [Server]
     private void SendPlaceResult(NetworkConnectionToClient sender, PlaceItemResult placeResult)
