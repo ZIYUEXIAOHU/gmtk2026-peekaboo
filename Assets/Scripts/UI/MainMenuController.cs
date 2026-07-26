@@ -8,6 +8,7 @@ using Mirror;
 public class MainMenuController : MonoBehaviour
 {
     public const string PrefPreferredRole = "PreferredRole";
+    public const string PrefPlayerName = "PlayerName";  // 玩家名称保存键
 
     [Header("主菜单")]
     public GameObject mainMenuPanel;  // GameMenuPanel
@@ -17,6 +18,9 @@ public class MainMenuController : MonoBehaviour
     public Button joinGameBtn;      // 加入游戏
     public Button settingsBtn;      // 设置
     public Button quitGameBtn;      // 退出游戏
+
+    [Header("玩家名称")]
+    public TMP_InputField playerNameInput;  // 玩家名称输入框（放在主界面）
     
     [Header("加入游戏面板")]
     public GameObject joinPanel;    // 加入面板
@@ -67,6 +71,7 @@ public class MainMenuController : MonoBehaviour
     private bool _roomEventsSubscribed;
     private bool isCreatingRoom;
     private Coroutine hideSlotFullCoroutine;
+    private string currentPlayerName = "";
     
     void Start()
     {
@@ -76,6 +81,9 @@ public class MainMenuController : MonoBehaviour
         // 初始隐藏 SlotFull 提示
         if (slotFullImage != null)
             slotFullImage.gameObject.SetActive(false);
+
+        // ===== 加载玩家名称 =====
+        LoadPlayerName();
 
         EnsureJoinUiRefs();
         
@@ -124,9 +132,66 @@ public class MainMenuController : MonoBehaviour
         if (sfxVolumeSlider != null)
             sfxVolumeSlider.onValueChanged.AddListener(OnSFXVolumeChanged);
         
+        // ===== 玩家名称输入监听 =====
+        if (playerNameInput != null)
+        {
+            playerNameInput.onEndEdit.AddListener(OnPlayerNameChanged);
+            playerNameInput.text = currentPlayerName;
+        }
+        
         StartCoroutine(EnsureRoomEventsSubscribed());
         ShowMainMenu();
         LoadSettings();
+    }
+
+    // ==================== 玩家名称管理 ====================
+    
+    void LoadPlayerName()
+    {
+        if (PlayerPrefs.HasKey(PrefPlayerName))
+        {
+            currentPlayerName = PlayerPrefs.GetString(PrefPlayerName);
+        }
+        else
+        {
+            // ===== 默认名称：使用系统用户名 + 随机数字 =====
+            string systemName = System.Environment.UserName;
+            if (string.IsNullOrEmpty(systemName))
+                systemName = "Player";
+            currentPlayerName = $"{systemName}{Random.Range(100, 999)}";
+        }
+        
+        if (playerNameInput != null)
+            playerNameInput.text = currentPlayerName;
+        
+        Debug.Log($"📛 玩家名称已加载: {currentPlayerName}");
+    }
+
+    void OnPlayerNameChanged(string newName)
+    {
+        if (string.IsNullOrWhiteSpace(newName))
+        {
+            currentPlayerName = $"Player{Random.Range(100, 999)}";
+            if (playerNameInput != null)
+                playerNameInput.text = currentPlayerName;
+        }
+        else
+        {
+            currentPlayerName = newName.Trim();
+        }
+        
+        PlayerPrefs.SetString(PrefPlayerName, currentPlayerName);
+        PlayerPrefs.Save();
+        
+        Debug.Log($"📛 玩家名称已更新: {currentPlayerName}");
+    }
+
+    /// <summary>
+    /// 获取当前玩家名称（供其他脚本使用）
+    /// </summary>
+    public string GetPlayerName()
+    {
+        return currentPlayerName;
     }
 
     // ==================== SlotFull 提示 ====================
@@ -154,9 +219,6 @@ public class MainMenuController : MonoBehaviour
         hideSlotFullCoroutine = null;
     }
 
-    /// <summary>
-    /// 按钮悬停时检测是否满员，满员则显示提示
-    /// </summary>
     public void OnRoleButtonHover(PlayerRole role)
     {
         if (!GameContract.IsRoomBound || GameContract.RoomState == null) return;
@@ -207,15 +269,12 @@ public class MainMenuController : MonoBehaviour
         btn.onClick.RemoveAllListeners();
         btn.onClick.AddListener(() => OnSelectRoleClicked(role));
         
-        // ===== 添加悬停事件 =====
         var trigger = btn.gameObject.GetComponent<UnityEngine.EventSystems.EventTrigger>();
         if (trigger == null)
             trigger = btn.gameObject.AddComponent<UnityEngine.EventSystems.EventTrigger>();
         
-        // 清除旧事件
         trigger.triggers.Clear();
         
-        // 添加 PointerEnter 事件
         var enterEntry = new UnityEngine.EventSystems.EventTrigger.Entry();
         enterEntry.eventID = UnityEngine.EventSystems.EventTriggerType.PointerEnter;
         enterEntry.callback.AddListener((data) => OnRoleButtonHover(role));
@@ -541,7 +600,6 @@ public class MainMenuController : MonoBehaviour
         if (!GameContract.RoomCommands.TrySelectRoleBeforeEnter(role))
             return;
 
-        // 成功选择，隐藏提示
         ShowSlotFullMessage(false);
 
         string name = role == PlayerRole.Hider ? "躲藏者" : "抓捕者";
@@ -558,7 +616,8 @@ public class MainMenuController : MonoBehaviour
     {
         if (!GameContract.IsRoomBound) return;
 
-        string roomName = $"{System.Environment.MachineName}的房间";
+        // ===== 使用自定义玩家名称作为房间名 =====
+        string roomName = $"{currentPlayerName}的房间";
         if (statusText != null)
             statusText.text = $"⏳ 正在创建房间「{roomName}」...";
 
@@ -689,7 +748,8 @@ public class MainMenuController : MonoBehaviour
         PlayerPrefs.SetInt(PrefPreferredRole, (int)preferredRole);
         PlayerPrefs.Save();
 
-        string roomName = $"{System.Environment.MachineName}的房间";
+        // ===== 使用自定义玩家名称作为房间名 =====
+        string roomName = $"{currentPlayerName}的房间";
         int maxPlayers = Mathf.Max(2, defaultMaxPlayers);
 
         try

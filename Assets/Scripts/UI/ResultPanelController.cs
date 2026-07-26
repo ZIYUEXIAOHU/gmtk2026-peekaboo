@@ -27,6 +27,9 @@ public class ResultPanelController : MonoBehaviour
     public Sprite aliveSprite;
     public Sprite lostSprite;
     
+    [Header("结算列表（Win/Lost 面板）")]
+    public ResultListController resultListController;
+    
     private List<GameObject> scoreItems = new List<GameObject>();
     private int gameNumber = 0;
     private bool eventsSubscribed;
@@ -38,6 +41,26 @@ public class ResultPanelController : MonoBehaviour
     {
         EnsureCanvasGroup();
         SetPanelVisible(false);
+        
+        // ===== 自动查找 ResultListController =====
+        if (resultListController == null)
+        {
+            resultListController = GetComponentInChildren<ResultListController>(true);
+            if (resultListController != null)
+            {
+                Debug.Log("✅ 自动找到 ResultListController");
+            }
+            else
+            {
+                Debug.LogWarning("⚠️ 未找到 ResultListController，请手动绑定");
+            }
+        }
+        
+        // ===== 初始隐藏 ResultListController =====
+        if (resultListController != null)
+        {
+            resultListController.gameObject.SetActive(false);
+        }
     }
     
     void Start()
@@ -96,9 +119,6 @@ public class ResultPanelController : MonoBehaviour
         UnsubscribeEvents();
     }
     
-    /// <summary>
-    /// 若已错过 RpcGameEnded（晚订阅 / 重连），从 State 补开结算面板。
-    /// </summary>
     void TryShowFromState()
     {
         if (resultShown) return;
@@ -131,6 +151,24 @@ public class ResultPanelController : MonoBehaviour
     {
         resultShown = true;
         SetPanelVisible(true);
+        
+        // ===== 显示 ResultListController =====
+        if (resultListController != null)
+        {
+            resultListController.gameObject.SetActive(true);
+            resultListController.Refresh();
+            Debug.Log("✅ ResultListController 已显示并刷新");
+        }
+        else
+        {
+            resultListController = GetComponentInChildren<ResultListController>(true);
+            if (resultListController != null)
+            {
+                resultListController.gameObject.SetActive(true);
+                resultListController.Refresh();
+                Debug.Log("✅ 重新找到并显示 ResultListController");
+            }
+        }
         
         if (gameUI != null)
             gameUI.SetActive(false);
@@ -173,7 +211,7 @@ public class ResultPanelController : MonoBehaviour
             durationText.text = $"TOTAL TIME: {minutes:D2}:{seconds:D2}";
         }
         
-        // ===== 阵营标题 (HIDER / HUNTER) =====
+        // ===== 阵营标题 =====
         if (titleTeam != null)
         {
             if (result.result == GameResult.HidersWin)
@@ -193,7 +231,7 @@ public class ResultPanelController : MonoBehaviour
             }
         }
         
-        // ===== 输赢标题 (WIN / FAIL) =====
+        // ===== 输赢标题 =====
         if (titleResult != null)
         {
             if (result.result == GameResult.HidersWin)
@@ -218,6 +256,7 @@ public class ResultPanelController : MonoBehaviour
     
     void UpdateScoreList(List<IPlayerStateReadonly> players, MatchResult result)
     {
+        // ===== 清理旧的 ScoreItem =====
         foreach (var item in scoreItems)
         {
             Destroy(item);
@@ -230,7 +269,23 @@ public class ResultPanelController : MonoBehaviour
             {
                 Transform child = scoreListParent.GetChild(i);
                 if (child != null)
+                {
+                    // ===== 保护 Win 和 Lost 面板，不被删除 =====
+                    if (child.name == "Win" || child.name == "Lost")
+                    {
+                        Debug.Log($"🛡️ 保护面板: {child.name}");
+                        continue;
+                    }
+                    
+                    // ===== 保护 ResultListController =====
+                    if (child.GetComponent<ResultListController>() != null)
+                    {
+                        Debug.Log($"🛡️ 保护 ResultListController");
+                        continue;
+                    }
+                    
                     Destroy(child.gameObject);
+                }
             }
         }
         
@@ -255,7 +310,46 @@ public class ResultPanelController : MonoBehaviour
     
     void CreateScoreItem(IPlayerStateReadonly player, bool won)
     {
-        GameObject item = Instantiate(scoreItemPrefab, scoreListParent);
+        if (scoreItemPrefab == null) return;
+        
+        // ===== 根据胜负选择父物体 =====
+        Transform parent = scoreListParent;
+        
+        if (resultListController != null)
+        {
+            if (won && resultListController.winPanel != null)
+            {
+                // ===== 找到 Win 面板下的 Panel 子物体 =====
+                Transform container = resultListController.winPanel.Find("Panel");
+                if (container != null)
+                {
+                    parent = container;
+                    Debug.Log($"✅ WIN 玩家 {player.PlayerName} → 生成到 Win/Panel");
+                }
+                else
+                {
+                    parent = resultListController.winPanel;
+                    Debug.Log($"✅ WIN 玩家 {player.PlayerName} → 生成到 Win");
+                }
+            }
+            else if (!won && resultListController.lostPanel != null)
+            {
+                // ===== 找到 Lost 面板下的 Panel 子物体 =====
+                Transform container = resultListController.lostPanel.Find("Panel");
+                if (container != null)
+                {
+                    parent = container;
+                    Debug.Log($"❌ LOST 玩家 {player.PlayerName} → 生成到 Lost/Panel");
+                }
+                else
+                {
+                    parent = resultListController.lostPanel;
+                    Debug.Log($"❌ LOST 玩家 {player.PlayerName} → 生成到 Lost");
+                }
+            }
+        }
+        
+        GameObject item = Instantiate(scoreItemPrefab, parent);
         
         Image iconImage = item.transform.Find("IconImage")?.GetComponent<Image>();
         TextMeshProUGUI nameText = item.transform.Find("NameText")?.GetComponent<TextMeshProUGUI>();
@@ -263,6 +357,7 @@ public class ResultPanelController : MonoBehaviour
         TextMeshProUGUI resultText = item.transform.Find("ResultText")?.GetComponent<TextMeshProUGUI>();
         TextMeshProUGUI timeText = item.transform.Find("TimeText")?.GetComponent<TextMeshProUGUI>();
         
+        // ===== 设置图标 =====
         if (iconImage != null)
         {
             if (won)
@@ -280,7 +375,6 @@ public class ResultPanelController : MonoBehaviour
         if (nameText != null)
             nameText.text = player.PlayerName;
         
-        // ===== 阵营：HIDER / HUNTER（从契约读取 PlayerRole） =====
         if (teamText != null)
         {
             if (player.Role == PlayerRole.Hider)
@@ -300,7 +394,6 @@ public class ResultPanelController : MonoBehaviour
             }
         }
         
-        // ===== 输赢：WIN / LOST =====
         if (resultText != null)
         {
             if (won)
@@ -338,7 +431,6 @@ public class ResultPanelController : MonoBehaviour
         canvasGroup.interactable = visible;
         canvasGroup.blocksRaycasts = visible;
         
-        // 保持 GameObject 始终激活，以便订阅与补开结算；仅控制可见性
         if (!gameObject.activeSelf)
             gameObject.SetActive(true);
     }
@@ -348,6 +440,9 @@ public class ResultPanelController : MonoBehaviour
         Debug.Log("🏠 返回主菜单");
         
         SetPanelVisible(false);
+        
+        if (resultListController != null)
+            resultListController.gameObject.SetActive(false);
         
         if (GameContract.IsRoomBound)
         {
@@ -367,6 +462,9 @@ public class ResultPanelController : MonoBehaviour
         Debug.Log("🚪 返回大厅");
         
         SetPanelVisible(false);
+        
+        if (resultListController != null)
+            resultListController.gameObject.SetActive(false);
         
         if (gameUI != null)
             gameUI.SetActive(true);

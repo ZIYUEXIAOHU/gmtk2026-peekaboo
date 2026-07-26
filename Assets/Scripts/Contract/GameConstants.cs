@@ -10,7 +10,7 @@ public static class GameConstants
     public const float SeekerMoveSpeed = 0.5f;
 
     // ---- 阶段时长（秒）----
-    public const float PrepDuration = 40f;    // 躲藏者准备阶段
+    public const float PrepDuration = 5f;    // 躲藏者准备阶段
     public const float MatchDuration = 250f;  // 正式对局
 
     // ---- 躲藏者随机变化 ----

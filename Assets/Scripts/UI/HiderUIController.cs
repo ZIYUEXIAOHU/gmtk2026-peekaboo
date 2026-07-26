@@ -1,6 +1,7 @@
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
+using System.Collections;
 using System.Collections.Generic;
 
 public class HiderUIController : MonoBehaviour
@@ -44,13 +45,16 @@ public class HiderUIController : MonoBehaviour
     private bool isObserving = false;
     private string lastInventorySignature = null;
     private HiderState lastHiderState = (HiderState)(-1);
+    private bool hasInitializedUI = false;
+    private bool isSubscribed = false;
     
     void Start()
     {
+        // ===== 加载共享物品表（契约：双方引用同一份资产） =====
         itemTable = Resources.Load<ItemTable>("ItemTable");
         if (itemTable == null)
         {
-            Debug.LogWarning("⚠️ ItemTable 未找到");
+            Debug.LogWarning("⚠️ ItemTable 未找到，物品栏图标将无法显示");
         }
         
         if (placeHintText != null)
@@ -66,10 +70,88 @@ public class HiderUIController : MonoBehaviour
             observerPrevBtn.onClick.AddListener(OnPrevObserver);
         if (observerNextBtn != null)
             observerNextBtn.onClick.AddListener(OnNextObserver);
+
+        // ===== 订阅契约事件（如果未绑定则等待重试） =====
+        SubscribeEvents();
+        
+        // ===== 延迟初始化 UI（等待契约就绪） =====
+        StartCoroutine(DelayedForceUpdateUI());
+    }
+
+    void OnDestroy()
+    {
+        UnsubscribeEvents();
+    }
+
+    // ==================== 契约事件订阅 ====================
+    
+    void SubscribeEvents()
+    {
+        if (isSubscribed) return;
+        
+        // ===== 如果契约未绑定，等待重试 =====
+        if (!GameContract.IsBound)
+        {
+            Debug.Log("⏳ HiderUIController: 契约未绑定，稍后重试订阅...");
+            StartCoroutine(RetrySubscribeEvents());
+            return;
+        }
+        
+        // ===== 契约已绑定，正常订阅 =====
+        try
+        {
+            GameContract.Events.OnPhaseChanged += OnPhaseChanged;
+            GameContract.Events.OnHiderTransformed += OnHiderTransformed;
+            GameContract.Events.OnCaptured += OnCaptured;
+            GameContract.Events.OnHiderRespawned += OnHiderRespawned;
+            isSubscribed = true;
+            Debug.Log("✅ HiderUIController 订阅契约事件成功");
+        }
+        catch (System.Exception e)
+        {
+            Debug.LogWarning($"订阅事件失败：{e.Message}");
+        }
+    }
+
+    IEnumerator RetrySubscribeEvents()
+    {
+        float waited = 0f;
+        while (!GameContract.IsBound && waited < 5f)
+        {
+            yield return null;
+            waited += Time.unscaledDeltaTime;
+        }
+        
+        if (GameContract.IsBound)
+        {
+            Debug.Log("✅ 契约已绑定，HiderUI 重试订阅事件");
+            SubscribeEvents();
+        }
+        else
+        {
+            Debug.LogWarning("⚠️ 契约超时未绑定，HiderUI 事件订阅失败");
+        }
+    }
+
+    void UnsubscribeEvents()
+    {
+        if (!isSubscribed) return;
+        if (!GameContract.IsBound) return;
+        
+        try
+        {
+            GameContract.Events.OnPhaseChanged -= OnPhaseChanged;
+            GameContract.Events.OnHiderTransformed -= OnHiderTransformed;
+            GameContract.Events.OnCaptured -= OnCaptured;
+            GameContract.Events.OnHiderRespawned -= OnHiderRespawned;
+            isSubscribed = false;
+        }
+        catch { }
     }
 
     void Update()
     {
+        // ===== 严格遵循契约：通过 GameContract.State 获取数据 =====
         if (!GameContract.IsBound || GameContract.State == null)
             return;
 
@@ -77,15 +159,67 @@ public class HiderUIController : MonoBehaviour
         if (local == null || local.Role != PlayerRole.Hider)
             return;
 
+        // ===== 只更新数据，不控制激活状态 =====
+        // 激活状态由 LobbyRoomController.UpdateRoleUI() 控制
+        
         string signature = BuildInventorySignature(local.ItemQueue);
-        if (signature == lastInventorySignature && local.HiderState == lastHiderState)
+        if (signature == lastInventorySignature && local.HiderState == lastHiderState && hasInitializedUI)
             return;
 
         lastInventorySignature = signature;
         lastHiderState = local.HiderState;
+        hasInitializedUI = true;
+        
         UpdateHiderUI(local, GameContract.State.Players);
     }
 
+    // ==================== 延迟初始化 ====================
+    
+    IEnumerator DelayedForceUpdateUI()
+    {
+        float waited = 0f;
+        while (!GameContract.IsBound && waited < 5f)
+        {
+            yield return null;
+            waited += Time.unscaledDeltaTime;
+        }
+        
+        ForceUpdateUI();
+    }
+
+    void ForceUpdateUI()
+    {
+        if (!GameContract.IsBound || GameContract.State == null)
+        {
+            Debug.LogWarning("⚠️ 契约未就绪，跳过初始 UI 更新");
+            return;
+        }
+
+        IPlayerStateReadonly local = GameContract.State.LocalPlayer;
+        if (local == null)
+        {
+            Debug.LogWarning("⚠️ 本地玩家为空，跳过初始 UI 更新");
+            return;
+        }
+
+        if (local.Role != PlayerRole.Hider)
+        {
+            Debug.Log($"ℹ️ 本地玩家不是躲藏者 (Role={local.Role})");
+            return;
+        }
+
+        // ===== 重置缓存，强制刷新 =====
+        lastInventorySignature = null;
+        lastHiderState = (HiderState)(-1);
+        hasInitializedUI = false;
+        
+        // ===== 直接更新 UI =====
+        UpdateHiderUI(local, GameContract.State.Players);
+        Debug.Log($"✅ HiderUI 数据刷新完成，物品数量: {local.ItemQueue?.Count ?? 0}");
+    }
+
+    // ==================== 物品栏签名 ====================
+    
     static string BuildInventorySignature(IReadOnlyList<int> queue)
     {
         if (queue == null || queue.Count == 0)
@@ -100,6 +234,8 @@ public class HiderUIController : MonoBehaviour
         }
         return sb.ToString();
     }
+    
+    // ==================== 物品栏初始化 ====================
     
     void InitializeInventory()
     {
@@ -186,17 +322,15 @@ public class HiderUIController : MonoBehaviour
         }
         
         inventoryCountText.text = $"{activeSlotCount}/{maxSlots}";
-        Debug.Log($"📊 更新数量显示: {activeSlotCount}/{maxSlots}");
     }
+    
+    // ==================== 物品栏更新 ====================
     
     public void UpdateInventory(IReadOnlyList<int> itemQueue)
     {
-        Debug.Log($"🔄 UpdateInventory 被调用，itemQueue={itemQueue?.Count ?? 0}");
-        
         if (itemQueue == null) return;
         
         int itemCount = itemQueue.Count;
-        Debug.Log($"📦 物品数量: {itemCount}");
         
         EnsureSlots(itemCount);
         
@@ -217,6 +351,7 @@ public class HiderUIController : MonoBehaviour
                 Image highlight = slotHighlights[i];
                 
                 int itemId = itemQueue[i];
+                
                 if (itemTable != null && itemTable.IsValid(itemId))
                 {
                     ItemTable.Entry entry = itemTable.Get(itemId);
@@ -266,10 +401,10 @@ public class HiderUIController : MonoBehaviour
         UpdateInventoryCount();
     }
     
+    // ==================== Hider UI 更新 ====================
+    
     public void UpdateHiderUI(IPlayerStateReadonly playerState, IReadOnlyList<IPlayerStateReadonly> allPlayers)
     {
-        Debug.Log($"🔄 UpdateHiderUI 被调用，playerState={(playerState != null ? "有效" : "null")}");
-        
         if (playerState == null) return;
         
         bool isCaptured = (playerState.HiderState == HiderState.Captured);
@@ -285,6 +420,8 @@ public class HiderUIController : MonoBehaviour
             UpdateInventory(playerState.ItemQueue);
         }
     }
+    
+    // ==================== 观战模式 ====================
     
     void EnterObserverMode(IReadOnlyList<IPlayerStateReadonly> allPlayers)
     {
@@ -400,6 +537,8 @@ public class HiderUIController : MonoBehaviour
         Debug.Log($"👁️ 切换到下一个观战目标: {aliveHiders[currentObserverIndex].PlayerName}");
     }
     
+    // ==================== 状态显示 ====================
+    
     void UpdateHiderState(HiderState state)
     {
         if (hiderStateText == null || disguiseStatusIcon == null) return;
@@ -459,6 +598,46 @@ public class HiderUIController : MonoBehaviour
             transformTimer.gameObject.SetActive(true);
         }
     }
+    
+    // ==================== 契约事件回调 ====================
+    
+    void OnPhaseChanged(GamePhase phase, float duration)
+    {
+        ForceUpdateUI();
+        Debug.Log($"📊 HiderUI 阶段切换: {phase}, 时长: {duration}s");
+    }
+    
+    void OnHiderTransformed(TransformInfo info)
+    {
+        if (!GameContract.IsBound || GameContract.State == null) return;
+        IPlayerStateReadonly local = GameContract.State.LocalPlayer;
+        if (local == null || local.NetId != info.hiderNetId) return;
+        
+        ForceUpdateUI();
+        Debug.Log($"🔄 躲藏者变换: NetId={info.hiderNetId}, ItemId={info.newItemId}");
+    }
+    
+    void OnCaptured(CaptureInfo info)
+    {
+        if (!GameContract.IsBound || GameContract.State == null) return;
+        IPlayerStateReadonly local = GameContract.State.LocalPlayer;
+        if (local == null || local.NetId != info.hiderNetId) return;
+        
+        ForceUpdateUI();
+        Debug.Log($"🔴 被捕获: NetId={info.hiderNetId}, 剩余存活={info.aliveHiders}");
+    }
+    
+    void OnHiderRespawned(RespawnInfo info)
+    {
+        if (!GameContract.IsBound || GameContract.State == null) return;
+        IPlayerStateReadonly local = GameContract.State.LocalPlayer;
+        if (local == null || local.NetId != info.hiderNetId) return;
+        
+        ForceUpdateUI();
+        Debug.Log($"🔄 复活: NetId={info.hiderNetId}, ItemId={info.itemId}");
+    }
+    
+    // ==================== 外部控制 ====================
     
     public void Show()
     {
