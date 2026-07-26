@@ -9,6 +9,12 @@ public static class SeekerAttackEffect
     const float LocalScale = 0.5f;
     const int SortingOrder = 80;
 
+    /// <summary>
+    /// frame_04 不透明像素质心（归一化到 Sprite 矩形，原点左下）。
+    /// 不是画布/pivot 中心；用于把视觉逻辑中心对准鼠标。
+    /// </summary>
+    static readonly Vector2 Frame4LogicalCenterNormalized = new Vector2(0.39921f, 0.31879f);
+
     static Sprite[] cachedFrames;
 
     public static void Spawn(Vector2 worldPosition)
@@ -21,7 +27,6 @@ public static class SeekerAttackEffect
         }
 
         var go = new GameObject("SeekerAttackEffect");
-        go.transform.position = new Vector3(worldPosition.x, worldPosition.y, 0f);
         go.transform.localScale = Vector3.one * LocalScale;
 
         var sr = go.AddComponent<SpriteRenderer>();
@@ -29,6 +34,28 @@ public static class SeekerAttackEffect
 
         var fx = go.AddComponent<OneShotSpriteEffect>();
         fx.Play(frames, FramesPerSecond);
+
+        // 以第 4 帧内容逻辑中心补偿（非 bounds/画布中心）
+        int pivotFrameIndex = Mathf.Min(3, frames.Length - 1);
+        Vector3 localCenter = GetLogicalCenterLocal(frames[pivotFrameIndex], Frame4LogicalCenterNormalized);
+        go.transform.position = new Vector3(worldPosition.x, worldPosition.y, 0f)
+            - Vector3.Scale(localCenter, go.transform.localScale);
+    }
+
+    /// <summary>把归一化逻辑中心转成本地坐标（相对 Sprite pivot）。</summary>
+    static Vector3 GetLogicalCenterLocal(Sprite sprite, Vector2 logicalCenterNormalized)
+    {
+        if (sprite == null)
+            return Vector3.zero;
+
+        float w = sprite.rect.width;
+        float h = sprite.rect.height;
+        float ppu = sprite.pixelsPerUnit;
+        Vector2 pivot = sprite.pivot;
+        return new Vector3(
+            (logicalCenterNormalized.x * w - pivot.x) / ppu,
+            (logicalCenterNormalized.y * h - pivot.y) / ppu,
+            0f);
     }
 
     static Sprite[] GetFrames()

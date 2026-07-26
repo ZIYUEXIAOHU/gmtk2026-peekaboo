@@ -68,6 +68,11 @@ MonoBehaviour:
   syncInterval: 0
   seekerMax: 3
   hiderMax: 3
+  hiderRoomSpawns: []
+  matchMapRoot: {fileID: 0}
+  lobbyPlayArea: {fileID: 0}
+  matchMapRootName: GameScene
+  lobbyPlayAreaName: LobbyScene
   hiderSpawnCenter: {fileID: 0}
   hiderSpawnRadius: 6
   itemTable: {fileID: 11400000, guid: b86887e26df61244483f0181fa87776f, type: 2}

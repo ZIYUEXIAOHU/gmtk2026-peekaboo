@@ -39,8 +39,16 @@ public class NetworkGameState : NetworkBehaviour, IGameStateReadonly, IGameComma
     [SerializeField] private int seekerMax = 3;
     [SerializeField] private int hiderMax = 3;
 
-    [Header("Prep 阶段：躲藏者出生点分散")]
-    [Tooltip("留空则使用世界原点为圆心")]
+    [Header("Prep 阶段：躲藏者出生 / 地图切换")]
+    [Tooltip("四房间出生点（优先）；留空则运行时收集场景中的 HiderSpawnPoint")]
+    [SerializeField] private Transform[] hiderRoomSpawns;
+    [Tooltip("四房间地图根节点；留空则按名称查找")]
+    [SerializeField] private Transform matchMapRoot;
+    [Tooltip("小队大厅玩法区；留空则按名称查找")]
+    [SerializeField] private Transform lobbyPlayArea;
+    [SerializeField] private string matchMapRootName = "GameScene";
+    [SerializeField] private string lobbyPlayAreaName = "LobbyScene";
+    [Tooltip("无房间出生点时的回退：圆心（留空则世界原点）")]
     [SerializeField] private Transform hiderSpawnCenter;
     [SerializeField] private float hiderSpawnRadius = 6f;
 
@@ -701,6 +709,7 @@ public class NetworkGameState : NetworkBehaviour, IGameStateReadonly, IGameComma
     [Server]
     private void StartPrepPhase()
     {
+        ActivateMatchMap();
         ScatterHiderSpawns();
         foreach (RoomPlayer hider in GetAllRoomPlayers().Where(p => p.role == PlayerRole.Hider))
         {
@@ -757,6 +766,42 @@ public class NetworkGameState : NetworkBehaviour, IGameStateReadonly, IGameComma
         RpcPhaseChanged(newPhase, duration);
     }
 
+    /// <summary>
+    /// Prep：启用四房间地图，隐藏小队大厅玩法区。
+    /// NetworkGameState 为 DDOL 预制体，场景引用通常为空，故按名称在活动场景根节点查找。
+    /// 服务端与客户端都会调用（客户端经 RpcPhaseChanged）。
+    /// </summary>
+    private void ActivateMatchMap()
+    {
+        ResolveMapRoots();
+
+        if (matchMapRoot != null)
+            matchMapRoot.gameObject.SetActive(true);
+        else
+            Debug.LogWarning($"[NetworkGameState] 未找到对局地图根节点「{matchMapRootName}」，无法启用四房间地图。");
+
+        if (lobbyPlayArea != null)
+            lobbyPlayArea.gameObject.SetActive(false);
+    }
+
+    private void ResolveMapRoots()
+    {
+        if (matchMapRoot != null && lobbyPlayArea != null) return;
+
+        Scene scene = SceneManager.GetActiveScene();
+        if (!scene.IsValid()) return;
+
+        GameObject[] roots = scene.GetRootGameObjects();
+        for (int i = 0; i < roots.Length; i++)
+        {
+            GameObject root = roots[i];
+            if (matchMapRoot == null && root.name == matchMapRootName)
+                matchMapRoot = root.transform;
+            if (lobbyPlayArea == null && root.name == lobbyPlayAreaName)
+                lobbyPlayArea = root.transform;
+        }
+    }
+
     [Server]
     private void ScatterHiderSpawns()
     {
@@ -764,12 +809,83 @@ public class NetworkGameState : NetworkBehaviour, IGameStateReadonly, IGameComma
         int count = hiders.Count;
         if (count == 0) return;
 
+        List<Transform> spawns = CollectHiderRoomSpawns();
+        if (spawns.Count == 0)
+        {
+            Debug.LogWarning("[NetworkGameState] 未找到 HiderSpawnPoint / hiderRoomSpawns，回退到圆心分散。");
+            ScatterHidersInCircle(hiders);
+            return;
+        }
+
+        // 打乱后尽量一人一房；人数 > 点数时循环复用
+        Shuffle(spawns);
+        for (int i = 0; i < count; i++)
+        {
+            Transform spawn = spawns[i % spawns.Count];
+            TeleportHider(hiders[i], spawn.position);
+        }
+    }
+
+    private List<Transform> CollectHiderRoomSpawns()
+    {
+        var result = new List<Transform>();
+        if (hiderRoomSpawns != null)
+        {
+            for (int i = 0; i < hiderRoomSpawns.Length; i++)
+            {
+                if (hiderRoomSpawns[i] != null)
+                    result.Add(hiderRoomSpawns[i]);
+            }
+        }
+
+        if (result.Count > 0) return result;
+
+        HiderSpawnPoint[] points = FindObjectsByType<HiderSpawnPoint>(
+            FindObjectsInactive.Include,
+            FindObjectsSortMode.None);
+        for (int i = 0; i < points.Length; i++)
+        {
+            if (points[i] != null)
+                result.Add(points[i].transform);
+        }
+        return result;
+    }
+
+    [Server]
+    private void ScatterHidersInCircle(List<RoomPlayer> hiders)
+    {
+        int count = hiders.Count;
         Vector3 center = hiderSpawnCenter != null ? hiderSpawnCenter.position : Vector3.zero;
         for (int i = 0; i < count; i++)
         {
             float angle = (360f / count) * i * Mathf.Deg2Rad;
             Vector3 offset = new Vector3(Mathf.Cos(angle), Mathf.Sin(angle), 0f) * hiderSpawnRadius;
-            hiders[i].transform.position = center + offset;
+            TeleportHider(hiders[i], center + offset);
+        }
+    }
+
+    [Server]
+    private static void TeleportHider(RoomPlayer hider, Vector3 position)
+    {
+        if (hider == null) return;
+
+        NetworkTransformBase nt = hider.GetComponent<NetworkTransformBase>();
+        if (nt != null)
+            nt.ServerTeleport(position, hider.transform.rotation);
+        else
+            hider.transform.position = position;
+
+        Rigidbody2D rb = hider.GetComponent<Rigidbody2D>();
+        if (rb != null)
+            rb.velocity = Vector2.zero;
+    }
+
+    private static void Shuffle<T>(IList<T> list)
+    {
+        for (int i = list.Count - 1; i > 0; i--)
+        {
+            int j = UnityEngine.Random.Range(0, i + 1);
+            (list[i], list[j]) = (list[j], list[i]);
         }
     }
 
@@ -1188,7 +1304,12 @@ public class NetworkGameState : NetworkBehaviour, IGameStateReadonly, IGameComma
     // ================================================================
 
     [ClientRpc]
-    private void RpcPhaseChanged(GamePhase newPhase, float duration) => OnPhaseChanged?.Invoke(newPhase, duration);
+    private void RpcPhaseChanged(GamePhase newPhase, float duration)
+    {
+        if (newPhase == GamePhase.Prep)
+            ActivateMatchMap();
+        OnPhaseChanged?.Invoke(newPhase, duration);
+    }
 
     [ClientRpc]
     private void RpcRoleSlotsChanged(RoleSlots slots) => OnRoleSlotsChanged?.Invoke(slots);
