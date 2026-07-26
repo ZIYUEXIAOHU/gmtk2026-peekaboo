@@ -1,5 +1,6 @@
 // ============================================================
-// 物理层约定：玩家互不碰撞；放置物仅与躲藏者（及地面/场景）固体碰撞。
+// 物理层约定：躲藏者之间可固体碰撞（叠跳）；抓捕者互不撞、躲藏者↔抓捕者不撞；
+// 放置物仅与躲藏者（及地面/场景）固体碰撞。
 // ============================================================
 
 using UnityEngine;
@@ -36,8 +37,8 @@ public static class CollisionLayers
             return;
         }
 
-        // 玩家之间不碰撞
-        Physics2D.IgnoreLayerCollision(hider, hider, true);
+        // 躲藏者互撞（支持站队友起跳）；抓捕者互不撞；躲藏者↔抓捕者不撞
+        Physics2D.IgnoreLayerCollision(hider, hider, false);
         Physics2D.IgnoreLayerCollision(seeker, seeker, true);
         Physics2D.IgnoreLayerCollision(hider, seeker, true);
         if (player >= 0)
@@ -129,8 +130,8 @@ public static class CollisionLayers
         if (col == null)
             return;
 
-        // 只排除其它玩家；绝不排除 HiderItem
-        col.excludeLayers = Mask(Hider, Seeker, Player);
+        // 排除抓捕者/中立玩家；允许与其它躲藏者、HiderItem 固体碰撞
+        col.excludeLayers = Mask(Seeker, Player);
     }
 
     static void ConfigureNeutralPlayerCollider(GameObject go)

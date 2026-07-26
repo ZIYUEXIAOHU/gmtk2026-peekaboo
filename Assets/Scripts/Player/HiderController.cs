@@ -12,6 +12,12 @@ public class HiderController : NetworkBehaviour
     public float groundCheckRadius = 0.3f;
     public Transform groundCheckPoint;
     public LayerMask groundLayer;
+    [Tooltip("刚离开地面后仍可起跳的宽限时间（秒）")]
+    public float coyoteTime = 0.1f;
+    [Tooltip("最大跳跃次数（含地面跳 + 空中二段）")]
+    public int maxJumpCount = 2;
+    [Tooltip("起跳后多久才允许落地刷新次数，避免仍贴地时刷回满次数")]
+    public float jumpGroundLockout = 0.08f;
     
     [Header("测试模式")]
     public bool testMode = false;
@@ -23,8 +29,11 @@ public class HiderController : NetworkBehaviour
     private SpriteRenderer visualSpriteRenderer;
     private float moveInput;
     private bool isGrounded;
-    private bool hasJumped = false;
+    private int jumpsRemaining;
     private bool isLocalPlayerReady = false;
+    private float coyoteUntil;
+    private float lastJumpTime = -999f;
+    private bool coyoteConsumedGroundJump;
     
     void Start()
     {
@@ -83,9 +92,13 @@ public class HiderController : NetworkBehaviour
 
         Debug.Log($"✅ GroundCheck 位置: {groundCheckPoint.localPosition}");
         
-        // ===== 确保 groundLayer 包含 Ground 层 =====
-        groundLayer |= LayerMask.GetMask("Ground");
-        Debug.Log($"✅ groundLayer 已包含 Ground 层: {groundLayer.value}");
+        // 地面 / 放置物 / 其它躲藏者均可作为起跳面与刷新次数面
+        groundLayer |= LayerMask.GetMask(
+            CollisionLayers.Ground,
+            CollisionLayers.HiderItem,
+            CollisionLayers.Hider);
+        jumpsRemaining = maxJumpCount;
+        Debug.Log($"✅ groundLayer 掩码: {groundLayer.value}");
         
         if (testMode)
         {
@@ -165,27 +178,25 @@ public class HiderController : NetworkBehaviour
         
         CheckGrounded();
     }
-    
+
     void Jump()
     {
-        Debug.Log($"🔍 Jump 调用: isGrounded={isGrounded}, hasJumped={hasJumped}");
-        
-        if (isGrounded)
+        Debug.Log($"🔍 Jump 调用: grounded={isGrounded}, jumpsRemaining={jumpsRemaining}, coyote={Time.time < coyoteUntil}");
+
+        if (jumpsRemaining <= 0)
         {
-            hasJumped = false;
-        }
-        
-        if (hasJumped && !isGrounded)
-        {
-            Debug.Log("⚠️ 已经跳过了，不能二段跳");
+            Debug.Log("⚠️ 跳跃次数已用尽");
             return;
         }
-        
+
         rb.velocity = new Vector2(rb.velocity.x, jumpForce);
-        hasJumped = true;
+        jumpsRemaining--;
+        lastJumpTime = Time.time;
         isGrounded = false;
-        
-        Debug.Log($"✅ 跳跃！hasJumped={hasJumped}");
+        coyoteUntil = 0f;
+        coyoteConsumedGroundJump = false;
+
+        Debug.Log($"✅ 跳跃！剩余次数={jumpsRemaining}");
     }
     
     void DropDown()
@@ -203,7 +214,7 @@ public class HiderController : NetworkBehaviour
             groundLayer
         );
         
-        if (hit.collider != null)
+        if (hit.collider != null && !IsOwnCollider(hit.collider))
         {
             PlatformEffector2D effector = hit.collider.GetComponent<PlatformEffector2D>();
             if (effector != null && effector.useOneWay)
@@ -232,6 +243,23 @@ public class HiderController : NetworkBehaviour
             col.enabled = true;
         }
     }
+
+    Vector2 GetGroundCheckBoxSize()
+    {
+        BoxCollider2D col = GetComponent<BoxCollider2D>();
+        float width = col != null
+            ? Mathf.Max(col.size.x * Mathf.Abs(transform.lossyScale.x), groundCheckRadius * 2f)
+            : groundCheckRadius * 2f;
+        float height = groundCheckRadius * 2f;
+        return new Vector2(width, height);
+    }
+
+    bool IsOwnCollider(Collider2D hit)
+    {
+        if (hit == null)
+            return false;
+        return hit.transform == transform || hit.transform.IsChildOf(transform);
+    }
     
     void CheckGrounded()
     {
@@ -259,27 +287,57 @@ public class HiderController : NetworkBehaviour
         }
 
         // 不要每帧写死 GroundCheck 位置——变身后由 HiderDisguiseVisual 同步底边
-        
-        // ===== 用 Layer 检测 =====
-        Collider2D[] hits = Physics2D.OverlapCircleAll(
-            groundCheckPoint.position, 
-            groundCheckRadius, 
+
+        Vector2 boxSize = GetGroundCheckBoxSize();
+        Collider2D[] hits = Physics2D.OverlapBoxAll(
+            groundCheckPoint.position,
+            boxSize,
+            0f,
             groundLayer
         );
-        
-        bool wasGrounded = isGrounded;
-        isGrounded = hits.Length > 0;
-        
-        // ===== 调试日志 =====
-        if (hits.Length > 0)
+
+        bool foundGround = false;
+        for (int i = 0; i < hits.Length; i++)
         {
-            Debug.Log($"🔍 检测到 {hits.Length} 个地面物体 (Layer)");
+            if (IsOwnCollider(hits[i]))
+                continue;
+            foundGround = true;
+            break;
         }
         
-        if (!wasGrounded && isGrounded)
+        bool wasGrounded = isGrounded;
+        isGrounded = foundGround;
+
+        float vy = rb != null ? rb.velocity.y : 0f;
+        bool lockoutPassed = Time.time >= lastJumpTime + jumpGroundLockout;
+        bool trulyLanded = isGrounded && vy <= 0.1f && lockoutPassed;
+
+        if (trulyLanded)
         {
-            hasJumped = false;
-            Debug.Log("✅ 落地，重置跳跃状态");
+            if (jumpsRemaining < maxJumpCount)
+            {
+                jumpsRemaining = maxJumpCount;
+                Debug.Log("✅ 落地（地面/物品/队友），刷新跳跃次数");
+            }
+            coyoteUntil = Time.time + coyoteTime;
+            coyoteConsumedGroundJump = false;
+        }
+        else if (wasGrounded && !isGrounded && jumpsRemaining >= maxJumpCount)
+        {
+            // 走下支撑面且尚未起跳：开启 coyote，仍保留满次数
+            coyoteUntil = Time.time + coyoteTime;
+            coyoteConsumedGroundJump = false;
+        }
+        else if (!isGrounded
+                 && jumpsRemaining >= maxJumpCount
+                 && !coyoteConsumedGroundJump
+                 && Time.time >= coyoteUntil
+                 && coyoteUntil > 0f)
+        {
+            // coyote 过期仍未起跳：收束为只剩空中一段
+            jumpsRemaining = maxJumpCount - 1;
+            coyoteConsumedGroundJump = true;
+            coyoteUntil = 0f;
         }
     }
     
@@ -321,10 +379,17 @@ public class HiderController : NetworkBehaviour
     
     void OnDrawGizmosSelected()
     {
-        if (groundCheckPoint != null)
-        {
-            Gizmos.color = Color.green;
-            Gizmos.DrawWireSphere(groundCheckPoint.position, groundCheckRadius);
-        }
+        if (groundCheckPoint == null)
+            return;
+
+        Gizmos.color = Color.green;
+        Vector2 size = Application.isPlaying
+            ? GetGroundCheckBoxSize()
+            : new Vector2(
+                GetComponent<BoxCollider2D>() != null
+                    ? Mathf.Max(GetComponent<BoxCollider2D>().size.x * Mathf.Abs(transform.lossyScale.x), groundCheckRadius * 2f)
+                    : groundCheckRadius * 2f,
+                groundCheckRadius * 2f);
+        Gizmos.DrawWireCube(groundCheckPoint.position, size);
     }
 }
