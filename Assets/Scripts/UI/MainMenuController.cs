@@ -134,34 +134,12 @@ public class MainMenuController : MonoBehaviour
 
     void SetRoleSelectVisible(bool visible)
     {
-        if (roleSelectPanel == null)
-        {
-            Debug.LogWarning("[MainMenu] roleSelectPanel 未绑定，无法显示身份选择");
-            return;
-        }
-
+        if (roleSelectPanel == null) return;
         roleSelectPanel.SetActive(visible);
         if (visible)
         {
             roleSelectPanel.transform.SetAsLastSibling();
             Debug.Log("[MainMenu] 身份选择面板已显示");
-        }
-    }
-
-    /// <summary>把身份面板挂到当前流程面板下，避免被全屏 Join/Create 挡住。</summary>
-    void AttachRoleSelectTo(GameObject hostPanel)
-    {
-        if (roleSelectPanel == null || hostPanel == null) return;
-        roleSelectPanel.transform.SetParent(hostPanel.transform, false);
-        var rt = roleSelectPanel.transform as RectTransform;
-        if (rt != null)
-        {
-            rt.anchorMin = new Vector2(0.5f, 0.5f);
-            rt.anchorMax = new Vector2(0.5f, 0.5f);
-            rt.pivot = new Vector2(0.5f, 0.5f);
-            // 放在短码输入下方、JOIN 按钮附近，避免偏出屏幕
-            rt.anchoredPosition = new Vector2(0f, -90f);
-            rt.sizeDelta = new Vector2(900f, 120f);
         }
     }
 
@@ -249,9 +227,6 @@ public class MainMenuController : MonoBehaviour
         RefreshJoinRoleUiFromState(room);
     }
 
-    /// <summary>
-    /// 找房成功后才弹出身份；未找到则保持隐藏。
-    /// </summary>
     void RefreshJoinRoleUiFromState(RoomInfo? room = null)
     {
         if (!_joinPanelOpen) return;
@@ -363,8 +338,6 @@ public class MainMenuController : MonoBehaviour
         if (statusText != null)
             statusText.text = "📋 输入房间短码，点 JOIN 后再选身份";
 
-        AttachRoleSelectTo(joinPanel);
-        // 点 JOIN 找房成功后再显示身份
         SetRoleSelectVisible(false);
         RefreshJoinRoleButtons(default);
     }
@@ -390,7 +363,6 @@ public class MainMenuController : MonoBehaviour
             return;
         }
 
-        // 尚未找到房间：先按短码查找，找到后再弹出身份
         if (!GameContract.RoomState.FoundRoom.HasValue)
         {
             TryFindRoomByCodeInput();
@@ -434,7 +406,6 @@ public class MainMenuController : MonoBehaviour
 
         if (statusText != null) statusText.text = $"⏳ 正在查找短码 {code.Trim().ToUpperInvariant()}...";
         GameContract.RoomCommands.FindRoomByCode(code);
-        // 缓存同步命中时立刻弹身份；异步发现由事件/协程补刷
         RefreshJoinRoleUiFromState();
         StartCoroutine(WatchFoundRoomAfterSearch());
     }
@@ -456,7 +427,6 @@ public class MainMenuController : MonoBehaviour
 
     void ShowJoinRoleSelect()
     {
-        AttachRoleSelectTo(joinPanel);
         SetRoleSelectVisible(true);
     }
 
@@ -468,7 +438,6 @@ public class MainMenuController : MonoBehaviour
             return;
         }
 
-        // 加入面板且已找到房间：本地先拦满员
         if (_joinPanelOpen && GameContract.RoomState.FoundRoom.HasValue)
         {
             RoomInfo found = GameContract.RoomState.FoundRoom.Value;
@@ -493,10 +462,8 @@ public class MainMenuController : MonoBehaviour
         if (statusText != null)
             statusText.text = $"✅ 已选择：{name}";
 
-        // 创建：选完身份后直接创建
         if (_createPanelOpen)
             BeginCreateRoomAfterRoleSelected();
-        // 加入：已找到房间则直接加入（不必再点 JOIN）
         else if (_joinPanelOpen && GameContract.RoomState.FoundRoom.HasValue)
             TryJoinFoundRoomNow();
     }
@@ -590,7 +557,6 @@ public class MainMenuController : MonoBehaviour
         if (statusText != null)
             statusText.text = "🏠 选择身份并创建房间";
 
-        AttachRoleSelectTo(createPanel);
         SetRoleSelectVisible(true);
         SetRoleButtonInteractable(hiderBtn, true);
         SetRoleButtonInteractable(hunterBtn, true);

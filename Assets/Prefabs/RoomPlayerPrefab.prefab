@@ -97,6 +97,8 @@ GameObject:
   - component: {fileID: 820022002200220004}
   - component: {fileID: 820022002200220005}
   - component: {fileID: 820022002200220006}
+  - component: {fileID: 5555029378960100038}
+  - component: {fileID: 8175972414768103045}
   m_Layer: 0
   m_Name: Visual_Seeker
   m_TagString: Untagged
@@ -222,6 +224,55 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: dac3cc7fe94840feaea9afbb45c437e1, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+--- !u!114 &5555029378960100038
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 820022002200220001}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7af082fba7370574a8834bf20945dab2, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  detectRadius: 6
+  targetLayer:
+    serializedVersion: 2
+    m_Bits: 0
+  indicatorSprite: {fileID: 0}
+  normalColor: {r: 1, g: 1, b: 1, a: 0.3}
+  activeColor: {r: 1, g: 0.3, b: 0.1, a: 0.6}
+  pulseSpeed: 2
+  detectCenter: {fileID: 7086012302135243721}
+  showGizmos: 1
+  gizmoColor: {r: 1, g: 1, b: 1, a: 1}
+  gizmoActiveColor: {r: 1, g: 0, b: 0, a: 1}
+--- !u!114 &8175972414768103045
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 820022002200220001}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 0588c64011f317f418e253fd1e862fac, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  syncMethod: 0
+  syncDirection: 0
+  syncMode: 0
+  syncInterval: 0
+  defaultCursor: {fileID: 0}
+  attackCursor: {fileID: 0}
+  hotSpot: {x: 0, y: 0}
+  attackKey: 323
+  attackRange: 1.5
+  targetLayer:
+    serializedVersion: 2
+    m_Bits: 0
+  attackCooldown: 0.5
 --- !u!1 &3922214107978572470
 GameObject:
   m_ObjectHideFlags: 0

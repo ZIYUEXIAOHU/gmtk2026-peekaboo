@@ -4,7 +4,7 @@ public class CameraFollow : MonoBehaviour
 {
     [Header("跟随设置")]
     public float smoothSpeed = 0.125f;
-    public Vector3 offset = new Vector3(0, 0, -10);
+    public Vector3 offset = new Vector3(0, 1.5f, -10);
     
     [Header("边界限制")]
     public bool useBounds = false;
