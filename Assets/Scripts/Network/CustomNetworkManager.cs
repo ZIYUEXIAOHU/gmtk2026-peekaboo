@@ -249,23 +249,25 @@ public class CustomNetworkManager : NetworkManager
     }
     
     // ==================== 出生点 ====================
+    /// <summary>大厅出生点（练习房间 / 回 Waiting 传送）。</summary>
+    public Vector3 GetLobbySpawnPosition(PlayerRole role) => GetSpawnPosition(role);
+
     Vector3 GetSpawnPosition(PlayerRole role)
     {
         if (role == PlayerRole.Hider)
         {
             if (hiderLobbySpawnPoint != null)
                 return hiderLobbySpawnPoint.position;
-            else
-                return new Vector3(-3f, -2f, 0);
+            // 对齐大厅地面高度（约 y=-7），避免生成过高把镜头抬上天
+            return new Vector3(-3f, -7f, 0);
         }
         else if (role == PlayerRole.Seeker)
         {
             if (seekerLobbySpawnPoint != null)
                 return seekerLobbySpawnPoint.position;
-            else
-                return new Vector3(3f, -2f, 0);
+            return new Vector3(3f, -7f, 0);
         }
-        return new Vector3(0, -2f, 0);
+        return new Vector3(0, -7f, 0);
     }
     
     public override void OnServerDisconnect(NetworkConnectionToClient conn)

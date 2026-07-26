@@ -5950,7 +5950,7 @@ RectTransform:
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
   m_AnchoredPosition: {x: 0, y: 300}
-  m_SizeDelta: {x: 150, y: 150}
+  m_SizeDelta: {x: 560, y: 70}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &443114802
 MonoBehaviour:
@@ -6015,7 +6015,7 @@ MonoBehaviour:
   m_lineSpacingMax: 0
   m_paragraphSpacing: 0
   m_charWidthMaxAdj: 0
-  m_enableWordWrapping: 1
+  m_enableWordWrapping: 0
   m_wordWrappingRatios: 0.4
   m_overflowMode: 0
   m_linkedTextComponent: {fileID: 0}
@@ -7037,17 +7037,29 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   smoothSpeed: 0.125
-  offset: {x: 0, y: 2.4, z: -10}
+  offset: {x: 0, y: 1.2, z: -10}
   snapDistance: 8
   useLobbyBounds: 1
-  lobbyMinBounds: {x: -2, y: -8}
-  lobbyMaxBounds: {x: 2, y: -3}
+  lobbyMinBounds: {x: -11, y: -13}
+  lobbyMaxBounds: {x: 11, y: 4}
   useMatchBounds: 1
-  matchMinBounds: {x: -18, y: -12}
-  matchMaxBounds: {x: 18, y: 12}
+  matchMinBounds: {x: -22.5, y: -12.2}
+  matchMaxBounds: {x: 22.5, y: 11.8}
+  matchFloors:
+  - name: "\u4E8C\u697C"
+    playerMinY: -0.2
+    playerMaxY: 1000
+    minBounds: {x: -22.5, y: -0.4}
+    maxBounds: {x: 22.5, y: 11.8}
+  - name: "\u4E00\u697C"
+    playerMinY: -1000
+    playerMaxY: -0.2
+    minBounds: {x: -22.5, y: -12.2}
+    maxBounds: {x: 22.5, y: -0.1}
+  boundsBlendTime: 0.35
   useBounds: 1
-  minBounds: {x: -2, y: -8}
-  maxBounds: {x: 2, y: -3}
+  minBounds: {x: -11, y: -13}
+  maxBounds: {x: 11, y: 2}
   sceneBounds: []
   showBoundsInScene: 1
   boundsColor: {r: 0, g: 1, b: 0, a: 1}
@@ -17103,7 +17115,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 1}
   m_AnchorMax: {x: 0.5, y: 1}
-  m_AnchoredPosition: {x: 0, y: -120}
+  m_AnchoredPosition: {x: 0, y: -200}
   m_SizeDelta: {x: 300, y: 50}
   m_Pivot: {x: 0.5, y: 1}
 --- !u!114 &1358552203
@@ -18826,7 +18838,7 @@ RectTransform:
   m_AnchorMin: {x: 0.5, y: 1}
   m_AnchorMax: {x: 0.5, y: 1}
   m_AnchoredPosition: {x: 0, y: -200}
-  m_SizeDelta: {x: 200, y: 50}
+  m_SizeDelta: {x: 400, y: 50}
   m_Pivot: {x: 0.5, y: 1}
 --- !u!114 &1500835359
 MonoBehaviour:
@@ -24841,7 +24853,7 @@ RectTransform:
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
   m_AnchoredPosition: {x: 0, y: 200}
-  m_SizeDelta: {x: 200, y: 100}
+  m_SizeDelta: {x: 560, y: 70}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &2067295812
 MonoBehaviour:
@@ -24906,7 +24918,7 @@ MonoBehaviour:
   m_lineSpacingMax: 0
   m_paragraphSpacing: 0
   m_charWidthMaxAdj: 0
-  m_enableWordWrapping: 1
+  m_enableWordWrapping: 0
   m_wordWrappingRatios: 0.4
   m_overflowMode: 0
   m_linkedTextComponent: {fileID: 0}

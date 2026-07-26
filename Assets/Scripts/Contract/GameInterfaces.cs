@@ -78,6 +78,8 @@ public interface IGameCommands
     void SelectRole(PlayerRole role);
     /// <summary>房主开始游戏。拒绝原因：NotHost / NotEnoughPlayers / PlayersNotReady。</summary>
     void HostStartGame();
+    /// <summary>结算后回到小队练习房间（Ended → Waiting）。任意房间内玩家可发起；拒绝原因：WrongPhase。</summary>
+    void ReturnToWaiting();
 
     // ---- 躲藏者 ----
     /// <summary>F 放置物品于脚下。程序 1 校验阶段（Prep 或练习大厅）、物品栏顺序、空间是否足够，
@@ -103,7 +105,7 @@ public interface IGameEvents
     event Action<RoleSlots> OnRoleSlotsChanged;
     /// <summary>[全员] 对局结算（展示胜负界面）。</summary>
     event Action<MatchResult> OnGameEnded;
-    /// <summary>[仅发起者] 命令被拒绝（SelectRole / HostStartGame / Investigate / Slash）。
+    /// <summary>[仅发起者] 命令被拒绝（SelectRole / HostStartGame / Investigate / Slash / ReturnToWaiting）。
     /// 程序 2 据此弹提示；PlaceItem 的失败不走这里。</summary>
     event Action<CommandRejected> OnCommandRejected;
 

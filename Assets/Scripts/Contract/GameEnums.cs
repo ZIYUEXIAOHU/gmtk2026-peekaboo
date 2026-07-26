@@ -55,6 +55,7 @@ public enum GameCommandType
     HostStartGame = 2,
     Investigate = 3,
     Slash = 4,
+    ReturnToWaiting = 5, // 结算后回练习大厅
 }
 
 /// <summary>命令被拒绝的原因（程序 1 裁定后回给发起者）。</summary>

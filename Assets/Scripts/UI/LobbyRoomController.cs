@@ -359,6 +359,23 @@ public class LobbyRoomController : MonoBehaviour
         if (gameUI != null) gameUI.SetActive(false);
         gameStarted = false;
 
+        // 回 Waiting 后以权威 SyncVar 为准刷新本地 ready/locked
+        RoomPlayer local = GetLocalRoomPlayer();
+        if (local != null)
+        {
+            isReady = local.isReady;
+            isLocked = local.isReady;
+            if (readyBtn != null && !isHost)
+            {
+                TextMeshProUGUI btnText = readyBtn.GetComponentInChildren<TextMeshProUGUI>();
+                if (btnText != null)
+                {
+                    btnText.text = isReady ? "READY ✓" : "READY";
+                    btnText.color = isReady ? Color.green : Color.white;
+                }
+            }
+        }
+
         RefreshRoomCodeDisplay();
         SyncRoleFromPreferredOrPlayer();
 
@@ -368,6 +385,12 @@ public class LobbyRoomController : MonoBehaviour
             if (reselectBtn != null) reselectBtn.gameObject.SetActive(false);
             UpdateRoleUI(PlayerRole.None);
             UpdateStatusText("SELECT YOUR ROLE");
+        }
+        else
+        {
+            if (roleSelectPanel != null) roleSelectPanel.SetActive(false);
+            if (reselectBtn != null) reselectBtn.gameObject.SetActive(true);
+            UpdateRoleUI(PlayerRole.None);
         }
 
         UpdateButtonVisibility();
@@ -962,7 +985,10 @@ public class LobbyRoomController : MonoBehaviour
     void OnPhaseChanged(GamePhase phase, float duration)
     {
         if (phase == GamePhase.Waiting)
+        {
+            ShowLobbyUI();
             return;
+        }
 
         ShowGameUI();
     }

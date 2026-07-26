@@ -5,22 +5,48 @@ public class CameraFollow : MonoBehaviour
 {
     [Header("跟随设置")]
     public float smoothSpeed = 0.125f;
-    public Vector3 offset = new Vector3(0, 1.5f, -10);
+    public Vector3 offset = new Vector3(0, 1.2f, -10);
     [Tooltip("目标瞬移超过此距离时镜头直接贴上，避免从大厅慢慢飘到房间")]
     public float snapDistance = 8f;
 
     [Header("大厅边界（Waiting）")]
+    [Tooltip("大厅世界内容范围；镜头画面（含可视半宽半高）不会超出此矩形")]
     public bool useLobbyBounds = true;
-    public Vector2 lobbyMinBounds = new Vector2(-2, -8);
-    public Vector2 lobbyMaxBounds = new Vector2(2, -3);
+    public Vector2 lobbyMinBounds = new Vector2(-11f, -13f);
+    public Vector2 lobbyMaxBounds = new Vector2(11f, 4f);
 
     [Header("对局地图边界（Prep / Playing）")]
-    [Tooltip("四房间地图范围；关闭则进对局后不限制镜头")]
+    [Tooltip("四房间整体范围；玩家不在任何楼层区间时的兜底边界")]
     public bool useMatchBounds = true;
-    public Vector2 matchMinBounds = new Vector2(-18, -12);
-    public Vector2 matchMaxBounds = new Vector2(18, 12);
+    public Vector2 matchMinBounds = new Vector2(-22.5f, -12.2f);
+    public Vector2 matchMaxBounds = new Vector2(22.5f, 11.8f);
 
-    [Header("边界限制（运行时，由阶段切换）")]
+    [Tooltip("对局分楼层边界：按玩家 Y 选择所在楼层，镜头只在该楼层矩形内活动")]
+    public FloorBounds[] matchFloors = new FloorBounds[]
+    {
+        new FloorBounds
+        {
+            name = "二楼",
+            playerMinY = -0.2f,
+            playerMaxY = 1000f,
+            minBounds = new Vector2(-22.5f, -0.4f),
+            maxBounds = new Vector2(22.5f, 11.8f),
+        },
+        new FloorBounds
+        {
+            name = "一楼",
+            playerMinY = -1000f,
+            playerMaxY = -0.2f,
+            minBounds = new Vector2(-22.5f, -12.2f),
+            maxBounds = new Vector2(22.5f, -0.1f),
+        },
+    };
+
+    [Header("边界切换平滑")]
+    [Tooltip("楼层/阶段边界切换时，边界矩形过渡到位所需时间（秒）；0 = 立即切换")]
+    public float boundsBlendTime = 0.35f;
+
+    [Header("边界限制（运行时，由阶段/楼层刷新）")]
     public bool useBounds = false;
     public Vector2 minBounds;
     public Vector2 maxBounds;
@@ -42,6 +68,16 @@ public class CameraFollow : MonoBehaviour
     private string currentSceneName = "";
     private IGameEvents boundEvents;
     private bool phaseSubscribed;
+    private Camera cam;
+    private bool inMatchPhase;
+    private int currentFloorIndex = -1;
+
+    // 平滑过渡中的实际生效边界
+    private Vector2 blendedMin;
+    private Vector2 blendedMax;
+    private Vector2 blendMinVelocity;
+    private Vector2 blendMaxVelocity;
+    private bool blendInitialized;
 
     [System.Serializable]
     public class SceneBounds
@@ -50,6 +86,24 @@ public class CameraFollow : MonoBehaviour
         public Vector2 minBounds;
         public Vector2 maxBounds;
         public bool useBounds = true;
+    }
+
+    [System.Serializable]
+    public class FloorBounds
+    {
+        public string name;
+        [Tooltip("玩家 Y 在此区间内即视为在该楼层")]
+        public float playerMinY;
+        public float playerMaxY;
+        public Vector2 minBounds;
+        public Vector2 maxBounds;
+
+        public bool ContainsPlayerY(float y) => y >= playerMinY && y <= playerMaxY;
+    }
+
+    void Awake()
+    {
+        cam = GetComponent<Camera>();
     }
 
     void Start()
@@ -107,21 +161,21 @@ public class CameraFollow : MonoBehaviour
     {
         if (!isFollowing || target == null) return;
 
-        Vector3 desiredPosition = target.position + offset;
+        RefreshTargetBounds();
 
-        // 躲藏者 Prep 传送到房间后，立刻跟上，不要卡在大厅边界里慢慢追
-        if ((desiredPosition - transform.position).sqrMagnitude > snapDistance * snapDistance)
+        Vector3 desiredPosition = target.position + offset;
+        bool farAway = (desiredPosition - transform.position).sqrMagnitude > snapDistance * snapDistance;
+
+        if (farAway)
         {
+            // 传送（Prep 分房等）：边界与镜头都立即到位
             velocity = Vector3.zero;
-            Vector3 snapped = desiredPosition;
-            if (useBounds)
-            {
-                snapped.x = Mathf.Clamp(snapped.x, minBounds.x, maxBounds.x);
-                snapped.y = Mathf.Clamp(snapped.y, minBounds.y, maxBounds.y);
-            }
-            transform.position = snapped;
+            SnapBlendedBounds();
+            transform.position = ClampToViewBounds(desiredPosition);
             return;
         }
+
+        BlendBounds();
 
         Vector3 smoothedPosition = Vector3.SmoothDamp(
             transform.position,
@@ -130,13 +184,146 @@ public class CameraFollow : MonoBehaviour
             smoothSpeed
         );
 
-        if (useBounds)
+        transform.position = ClampToViewBounds(smoothedPosition);
+    }
+
+    /// <summary>
+    /// 按阶段 + 楼层刷新目标边界（minBounds/maxBounds）。
+    /// </summary>
+    void RefreshTargetBounds()
+    {
+        if (!inMatchPhase)
         {
-            smoothedPosition.x = Mathf.Clamp(smoothedPosition.x, minBounds.x, maxBounds.x);
-            smoothedPosition.y = Mathf.Clamp(smoothedPosition.y, minBounds.y, maxBounds.y);
+            // 大厅：单一矩形，不分楼层
+            useBounds = useLobbyBounds;
+            minBounds = lobbyMinBounds;
+            maxBounds = lobbyMaxBounds;
+            return;
         }
 
-        transform.position = smoothedPosition;
+        useBounds = useMatchBounds;
+        minBounds = matchMinBounds;
+        maxBounds = matchMaxBounds;
+        SelectFloor(matchFloors);
+    }
+
+    /// <summary>按玩家 Y 从楼层表中选中对应边界；找不到则保持兜底整图边界。</summary>
+    void SelectFloor(FloorBounds[] floors)
+    {
+        if (floors == null || floors.Length == 0 || target == null)
+            return;
+
+        float playerY = target.position.y;
+
+        // 仍在当前楼层区间内则不切换，避免边界抖动
+        if (currentFloorIndex >= 0 && currentFloorIndex < floors.Length
+            && floors[currentFloorIndex] != null
+            && floors[currentFloorIndex].ContainsPlayerY(playerY))
+        {
+            ApplyFloor(floors[currentFloorIndex]);
+            return;
+        }
+
+        for (int i = 0; i < floors.Length; i++)
+        {
+            if (floors[i] != null && floors[i].ContainsPlayerY(playerY))
+            {
+                currentFloorIndex = i;
+                ApplyFloor(floors[i]);
+                return;
+            }
+        }
+        // 不在任何楼层区间：保持兜底的整图边界
+    }
+
+    void ApplyFloor(FloorBounds floor)
+    {
+        minBounds = floor.minBounds;
+        maxBounds = floor.maxBounds;
+    }
+
+    /// <summary>边界矩形向目标值平滑过渡，避免上下楼时镜头瞬跳。</summary>
+    void BlendBounds()
+    {
+        if (!blendInitialized || boundsBlendTime <= 0f)
+        {
+            SnapBlendedBounds();
+            return;
+        }
+
+        blendedMin = Vector2.SmoothDamp(blendedMin, minBounds, ref blendMinVelocity, boundsBlendTime);
+        blendedMax = Vector2.SmoothDamp(blendedMax, maxBounds, ref blendMaxVelocity, boundsBlendTime);
+    }
+
+    void SnapBlendedBounds()
+    {
+        blendedMin = minBounds;
+        blendedMax = maxBounds;
+        blendMinVelocity = Vector2.zero;
+        blendMaxVelocity = Vector2.zero;
+        blendInitialized = true;
+    }
+
+    /// <summary>
+    /// 按正交相机可视范围夹取镜头中心，画面四边不超出当前边界矩形。
+    /// </summary>
+    Vector3 ClampToViewBounds(Vector3 position)
+    {
+        if (!useBounds) return position;
+
+        GetViewHalfExtents(out float halfW, out float halfH);
+        GetCameraCenterLimits(blendedMin, blendedMax, halfW, halfH,
+            out float minX, out float maxX, out float minY, out float maxY);
+
+        position.x = Mathf.Clamp(position.x, minX, maxX);
+        position.y = Mathf.Clamp(position.y, minY, maxY);
+        return position;
+    }
+
+    void GetViewHalfExtents(out float halfW, out float halfH)
+    {
+        if (cam == null)
+            cam = GetComponent<Camera>();
+
+        if (cam != null && cam.orthographic)
+        {
+            halfH = cam.orthographicSize;
+            halfW = halfH * cam.aspect;
+        }
+        else
+        {
+            halfW = 0f;
+            halfH = 0f;
+        }
+    }
+
+    static void GetCameraCenterLimits(
+        Vector2 worldMin,
+        Vector2 worldMax,
+        float halfW,
+        float halfH,
+        out float minX,
+        out float maxX,
+        out float minY,
+        out float maxY)
+    {
+        minX = worldMin.x + halfW;
+        maxX = worldMax.x - halfW;
+        minY = worldMin.y + halfH;
+        maxY = worldMax.y - halfH;
+
+        // 视口比边界矩形大时：锁定到矩形中心线，避免任何一侧越界
+        if (minX > maxX)
+        {
+            float cx = (worldMin.x + worldMax.x) * 0.5f;
+            minX = maxX = cx;
+        }
+
+        if (minY > maxY)
+        {
+            float cy = (worldMin.y + worldMax.y) * 0.5f;
+            minY = maxY = cy;
+        }
     }
 
     void TrySubscribePhase()
@@ -168,27 +355,15 @@ public class CameraFollow : MonoBehaviour
     }
 
     /// <summary>
-    /// Waiting 用大厅小边界；Prep 起用四房间边界（或关闭限制），否则镜头会卡在大厅看不到躲藏者。
+    /// Waiting 用大厅边界；Prep 起用对局楼层边界（含 Ended 结算）。
     /// </summary>
     void ApplyPhaseBounds(GamePhase phase)
     {
-        // Waiting = 小队大厅；其余阶段都在四房间地图（含 Ended 结算）
-        bool inMatch = phase != GamePhase.Waiting;
-
-        if (inMatch)
-        {
-            useBounds = useMatchBounds;
-            minBounds = matchMinBounds;
-            maxBounds = matchMaxBounds;
-            Debug.Log($"📏 对局镜头边界: use={useBounds} X({minBounds.x}~{maxBounds.x}) Y({minBounds.y}~{maxBounds.y})");
-        }
-        else
-        {
-            useBounds = useLobbyBounds;
-            minBounds = lobbyMinBounds;
-            maxBounds = lobbyMaxBounds;
-            Debug.Log($"📏 大厅镜头边界: use={useBounds} X({minBounds.x}~{maxBounds.x}) Y({minBounds.y}~{maxBounds.y})");
-        }
+        inMatchPhase = phase != GamePhase.Waiting;
+        currentFloorIndex = -1;
+        RefreshTargetBounds();
+        SnapBlendedBounds();
+        Debug.Log($"📏 镜头边界（{(inMatchPhase ? "对局" : "大厅")}）: use={useBounds} X({minBounds.x}~{maxBounds.x}) Y({minBounds.y}~{maxBounds.y})");
     }
 
     void ApplySceneBounds()
@@ -239,8 +414,7 @@ public class CameraFollow : MonoBehaviour
         {
             if (rp != null && rp.netId == localPlayer.NetId)
             {
-                target = rp.transform;
-                isFollowing = true;
+                BindTarget(rp.transform);
                 Debug.Log($"✅ 相机跟随本地玩家: {localPlayer.PlayerName} (NetId: {localPlayer.NetId})");
                 return;
             }
@@ -252,8 +426,7 @@ public class CameraFollow : MonoBehaviour
             RoomPlayer rp = player.GetComponent<RoomPlayer>();
             if (rp != null && rp.netId == localPlayer.NetId)
             {
-                target = player.transform;
-                isFollowing = true;
+                BindTarget(player.transform);
                 Debug.Log($"✅ 相机跟随本地玩家(备用): {localPlayer.PlayerName}");
                 return;
             }
@@ -262,11 +435,20 @@ public class CameraFollow : MonoBehaviour
         Debug.LogWarning($"⚠️ 未找到 NetId {localPlayer.NetId} 对应的玩家");
     }
 
+    void BindTarget(Transform t)
+    {
+        target = t;
+        isFollowing = t != null;
+        currentFloorIndex = -1;
+        velocity = Vector3.zero;
+    }
+
     public void SetBounds(Vector2 min, Vector2 max, bool use = true)
     {
         useBounds = use;
         minBounds = min;
         maxBounds = max;
+        SnapBlendedBounds();
         Debug.Log($"📏 手动设置边界: {min} ~ {max}");
     }
 
@@ -275,13 +457,32 @@ public class CameraFollow : MonoBehaviour
         if (!showBoundsInScene) return;
 
         if (useBounds)
+        {
             DrawBounds(minBounds, maxBounds, activeBoundsColor, "当前边界");
+            DrawCameraCenterLimits(minBounds, maxBounds, activeBoundsColor * 0.7f, "镜头中心限");
+        }
 
         if (useLobbyBounds)
             DrawBounds(lobbyMinBounds, lobbyMaxBounds, boundsColor, "大厅", dashed: true);
 
-        if (useMatchBounds)
-            DrawBounds(matchMinBounds, matchMaxBounds, new Color(0.2f, 0.6f, 1f), "对局", dashed: true);
+        if (useMatchBounds && matchFloors != null)
+        {
+            Color matchColor = new Color(0.2f, 0.6f, 1f);
+            for (int i = 0; i < matchFloors.Length; i++)
+            {
+                if (matchFloors[i] == null) continue;
+                DrawBounds(matchFloors[i].minBounds, matchFloors[i].maxBounds, matchColor,
+                    string.IsNullOrEmpty(matchFloors[i].name) ? $"楼层{i}" : matchFloors[i].name,
+                    dashed: true);
+            }
+        }
+    }
+
+    void DrawCameraCenterLimits(Vector2 worldMin, Vector2 worldMax, Color color, string label, bool dashed = false)
+    {
+        GetViewHalfExtents(out float halfW, out float halfH);
+        GetCameraCenterLimits(worldMin, worldMax, halfW, halfH, out float minX, out float maxX, out float minY, out float maxY);
+        DrawBounds(new Vector2(minX, minY), new Vector2(maxX, maxY), color, label, dashed);
     }
 
     void DrawBounds(Vector2 min, Vector2 max, Color color, string label = "", bool dashed = false)

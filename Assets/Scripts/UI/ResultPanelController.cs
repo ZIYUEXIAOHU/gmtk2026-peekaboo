@@ -94,6 +94,7 @@ public class ResultPanelController : MonoBehaviour
         UnsubscribeEvents();
         boundEvents = GameContract.Events;
         boundEvents.OnGameEnded += OnGameEnded;
+        boundEvents.OnPhaseChanged += OnPhaseChanged;
         eventsSubscribed = true;
         Debug.Log("✅ ResultPanelController 订阅 OnGameEnded 成功");
         
@@ -105,9 +106,15 @@ public class ResultPanelController : MonoBehaviour
         if (!eventsSubscribed) return;
         
         if (boundEvents != null)
+        {
             boundEvents.OnGameEnded -= OnGameEnded;
+            boundEvents.OnPhaseChanged -= OnPhaseChanged;
+        }
         else if (GameContract.IsBound && GameContract.Events != null)
+        {
             GameContract.Events.OnGameEnded -= OnGameEnded;
+            GameContract.Events.OnPhaseChanged -= OnPhaseChanged;
+        }
         
         boundEvents = null;
         eventsSubscribed = false;
@@ -448,14 +455,25 @@ public class ResultPanelController : MonoBehaviour
     
     void OnLobbyClicked()
     {
-        Debug.Log("🚪 返回大厅");
-        
+        Debug.Log("🚪 返回练习房间");
+
+        if (!GameContract.IsBound || GameContract.Commands == null)
+        {
+            Debug.LogWarning("⚠️ GameContract.Commands 未绑定，无法 ReturnToWaiting");
+            return;
+        }
+
+        GameContract.Commands.ReturnToWaiting();
+    }
+
+    void OnPhaseChanged(GamePhase phase, float duration)
+    {
+        if (phase != GamePhase.Waiting) return;
+
+        resultShown = false;
         SetPanelVisible(false);
-        
+
         if (resultListController != null)
             resultListController.gameObject.SetActive(false);
-        
-        if (gameUI != null)
-            gameUI.SetActive(true);
     }
 }
