@@ -26,6 +26,8 @@ public class ItemTable : ScriptableObject
         public GameObject prefab;   // 场景外观（含碰撞体；必须预挂 NetworkIdentity 并注册为网络预制体）
         public Sprite icon;         // 物品栏图标
         public ItemSize size;       // 大 / 中 / 小
+        [Tooltip("过高/过宽等不适合伪装时勾选；仍可进入物品栏并放置")]
+        public bool excludeFromDisguise;
     }
 
     [Tooltip("itemId = 列表索引，只增不删不重排")]

@@ -1168,22 +1168,44 @@ public class NetworkGameState : NetworkBehaviour, IGameStateReadonly, IGameComma
 
     /// <summary>
     /// 服务端随机伪装 itemId（选角/Prep/练习复活/变身波共用）。
-    /// 从 ItemTable 全表抽取；表空则用占位 id 0..FallbackQueueLength-1。尽量避开当前伪装。
+    /// 从 ItemTable 可伪装条目抽取（跳过 excludeFromDisguise）；表空则用占位 id。
+    /// 尽量避开当前伪装。
     /// </summary>
     [Server]
     private int PickRandomDisguiseItemId(int currentItemId)
     {
-        int count = (itemTable != null && itemTable.Count > 0)
-            ? itemTable.Count
-            : FallbackQueueLength;
+        if (itemTable == null || itemTable.Count == 0)
+        {
+            int fallbackCount = FallbackQueueLength;
+            if (fallbackCount <= 0) return 0;
+            if (fallbackCount == 1) return 0;
+            int fallback = UnityEngine.Random.Range(0, fallbackCount);
+            if (fallback == currentItemId)
+                fallback = (fallback + 1 + UnityEngine.Random.Range(0, fallbackCount - 1)) % fallbackCount;
+            return fallback;
+        }
 
-        if (count <= 0) return 0;
-        if (count == 1) return 0;
+        List<int> pool = new List<int>(itemTable.Count);
+        for (int i = 0; i < itemTable.Count; i++)
+        {
+            ItemTable.Entry entry = itemTable.Get(i);
+            if (entry != null && !entry.excludeFromDisguise)
+                pool.Add(i);
+        }
 
-        int picked = UnityEngine.Random.Range(0, count);
-        // 多于一件时尽量换新外观
+        if (pool.Count == 0)
+            return 0;
+        if (pool.Count == 1)
+            return pool[0];
+
+        int pickedIndex = UnityEngine.Random.Range(0, pool.Count);
+        int picked = pool[pickedIndex];
         if (picked == currentItemId)
-            picked = (picked + 1 + UnityEngine.Random.Range(0, count - 1)) % count;
+        {
+            int alt = UnityEngine.Random.Range(0, pool.Count - 1);
+            if (alt >= pickedIndex) alt++;
+            picked = pool[alt];
+        }
         return picked;
     }
 

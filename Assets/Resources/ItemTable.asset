@@ -21,6 +21,7 @@ MonoBehaviour:
     prefab: {fileID: 7556324004470732978, guid: e479faf006fcadd45824cd1f84a60c95, type: 3}
     icon: {fileID: 21300000, guid: c6dd8e7827465e945972caadcfc7669a, type: 3}
     size: 0
+    excludeFromDisguise: 1
   - displayName: Coffee Table
     prefab: {fileID: 1000000001, guid: 087f5cadc48e44749690ae0d768c9f63, type: 3}
     icon: {fileID: 21300000, guid: b319811ac8d342cd8e3f0ee5549506b6, type: 3}

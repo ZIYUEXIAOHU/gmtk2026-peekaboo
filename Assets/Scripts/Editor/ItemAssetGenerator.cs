@@ -19,7 +19,8 @@ public static class ItemAssetGenerator
     const int SortingLayerId = 1504543465;
     const int SortingOrder = 10;
 
-    static readonly float PpuLarge = 280f;
+    // 略提高 PPU，压矮 Large 物体，避免过高遮挡镜头
+    static readonly float PpuLarge = 380f;
     static readonly float PpuMiddle = 160f;
     static readonly float PpuSmall = 96f;
 
@@ -29,13 +30,15 @@ public static class ItemAssetGenerator
         public string displayName;
         public float ppu;
         public ItemSize size;
+        /// <summary>过高/过宽：不进伪装池，仍可放置。</summary>
+        public bool excludeFromDisguise;
     }
 
     static readonly ItemDef[] Items =
     {
         // Large
         new ItemDef { relativePath = "Large/L-BigTable.png", displayName = "Big Table", ppu = PpuLarge, size = ItemSize.Large },
-        new ItemDef { relativePath = "Large/L-Blue-Bed.png", displayName = "Blue Bed", ppu = PpuLarge, size = ItemSize.Large },
+        new ItemDef { relativePath = "Large/L-Blue-Bed.png", displayName = "Blue Bed", ppu = PpuLarge, size = ItemSize.Large, excludeFromDisguise = true },
         new ItemDef { relativePath = "Large/L-CoffeeTable.png", displayName = "Coffee Table", ppu = PpuLarge, size = ItemSize.Large },
         new ItemDef { relativePath = "Large/L-GiantRabbit.png", displayName = "Giant Rabbit", ppu = PpuLarge, size = ItemSize.Large },
         new ItemDef { relativePath = "Large/L-Green-Shelf.png", displayName = "Green Shelf", ppu = PpuLarge, size = ItemSize.Large },
@@ -108,6 +111,7 @@ public static class ItemAssetGenerator
                 prefab = prefab,
                 icon = sprite,
                 size = def.size,
+                excludeFromDisguise = def.excludeFromDisguise,
             });
         }
 
