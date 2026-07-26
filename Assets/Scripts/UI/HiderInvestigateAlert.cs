@@ -116,15 +116,24 @@ public class HiderInvestigateAlert : MonoBehaviour
     }
 
     /// <summary>
-    /// 从画布中心沿 dir 射线，与屏幕矩形边界求交，得到贴边位置。
+    /// 从画布中心沿 dir 射线，与屏幕矩形边界求交；并判断落在竖直边还是水平边。
     /// </summary>
-    static Vector2 EdgePointOnRect(Vector2 dir, float halfW, float halfH)
+    static Vector2 EdgePointOnRect(Vector2 dir, float halfW, float halfH, out bool hitVerticalEdge)
     {
         dir = dir.normalized;
         float sx = Mathf.Abs(dir.x) < 1e-5f ? float.PositiveInfinity : halfW / Mathf.Abs(dir.x);
         float sy = Mathf.Abs(dir.y) < 1e-5f ? float.PositiveInfinity : halfH / Mathf.Abs(dir.y);
+        hitVerticalEdge = sx <= sy;
         float t = Mathf.Min(sx, sy);
         return dir * t;
+    }
+
+    /// <summary>按命中边轴对齐角度，避免连续 Atan2 让光条相对屏幕边“发斜”。</summary>
+    static float EdgeAlignedAngle(Vector2 dir, bool hitVerticalEdge)
+    {
+        if (hitVerticalEdge)
+            return dir.x >= 0f ? 0f : 180f;   // 右 / 左
+        return dir.y >= 0f ? 90f : -90f;      // 上 / 下
     }
 
     void Update()
@@ -225,8 +234,8 @@ public class HiderInvestigateAlert : MonoBehaviour
         float halfH = screenH * 0.5f;
         Vector2 d = worldDir.normalized;
 
-        // 贴到屏幕矩形真正的边缘（不再用内切圆半径）
-        Vector2 edgePos = EdgePointOnRect(d, halfW, halfH);
+        // 贴到屏幕矩形真正的边缘；旋转只取 0/±90/180，与边平行
+        Vector2 edgePos = EdgePointOnRect(d, halfW, halfH, out bool hitVerticalEdge);
 
         float thickness = Mathf.Min(screenW, screenH) * EdgeThicknessRatio;
         // 条沿切线方向要足够长，才能盖住该侧边缘
@@ -235,7 +244,7 @@ public class HiderInvestigateAlert : MonoBehaviour
         edgeRect.sizeDelta = new Vector2(thickness, length);
         edgeRect.pivot = new Vector2(1f, 0.5f);
         edgeRect.anchoredPosition = edgePos;
-        edgeRect.localEulerAngles = new Vector3(0f, 0f, Mathf.Atan2(d.y, d.x) * Mathf.Rad2Deg);
+        edgeRect.localEulerAngles = new Vector3(0f, 0f, EdgeAlignedAngle(d, hitVerticalEdge));
 
         alertRemaining = AlertDuration;
         if (canvasGroup != null)

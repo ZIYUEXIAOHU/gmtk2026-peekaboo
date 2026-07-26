@@ -102,15 +102,11 @@ public class RoomPlayer : NetworkBehaviour, IPlayerStateReadonly
 
     void ApplyPreferredNameFromPrefs()
     {
-        string preferred = PlayerPrefs.GetString(GameConstants.PlayerNamePrefsKey, string.Empty);
-        if (string.IsNullOrWhiteSpace(preferred))
+        string preferred = PlayerProfile.PlayerName;
+        if (string.IsNullOrWhiteSpace(preferred) || preferred == playerName)
             return;
 
-        string sanitized = SanitizePlayerName(preferred);
-        if (sanitized == playerName)
-            return;
-
-        CmdSetPlayerName(sanitized);
+        CmdSetPlayerName(preferred);
     }
 
     /// <summary>展示名校验：Trim，空回落默认名，截断最大长度。</summary>

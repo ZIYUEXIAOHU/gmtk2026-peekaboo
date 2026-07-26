@@ -1,14 +1,15 @@
 using UnityEngine;
 
 /// <summary>
-/// 抓捕者探测圈表现：可见圈半径 = GameConstants.InvestigateRange，
-/// 并高亮探测圈内、鼠标判定半径内最近的可调查目标（InvestigableObject 或伪装中的躲藏者本体）。
+/// 抓捕者探测圈表现：可见椭圆半轴 = InvestigateRangeX / InvestigateRangeY，
+/// 并高亮探测范围内、鼠标判定半径内最近的可调查目标（InvestigableObject 或伪装中的躲藏者本体）。
 /// 不因「圈内有躲藏者」变红，避免直接暴露伪装。
 /// </summary>
 public class SeekerRangeIndicator : MonoBehaviour
 {
-    [Header("范围设置（运行时强制对齐 InvestigateRange）")]
-    public float detectRadius = GameConstants.InvestigateRange;
+    [Header("范围设置（运行时强制对齐 InvestigateRangeX/Y）")]
+    public float detectRadiusX = GameConstants.InvestigateRangeX;
+    public float detectRadiusY = GameConstants.InvestigateRangeY;
     public LayerMask targetLayer = ~0;
 
     [Header("发光效果")]
@@ -42,7 +43,8 @@ public class SeekerRangeIndicator : MonoBehaviour
     void Start()
     {
         CacheRefs();
-        detectRadius = GameConstants.InvestigateRange;
+        detectRadiusX = GameConstants.InvestigateRangeX;
+        detectRadiusY = GameConstants.InvestigateRangeY;
         if (indicatorSprite != null)
             indicatorSprite.color = normalColor;
         ApplyIndicatorScale(1f);
@@ -56,7 +58,8 @@ public class SeekerRangeIndicator : MonoBehaviour
     void Update()
     {
         CacheRefs();
-        detectRadius = GameConstants.InvestigateRange;
+        detectRadiusX = GameConstants.InvestigateRangeX;
+        detectRadiusY = GameConstants.InvestigateRangeY;
 
         bool show = ShouldShowIndicator();
         if (indicatorSprite != null)
@@ -65,7 +68,11 @@ public class SeekerRangeIndicator : MonoBehaviour
                 indicatorSprite.gameObject.SetActive(true);
             indicatorSprite.enabled = show;
             if (show && detectCenter != null)
-                indicatorSprite.transform.position = detectCenter.position;
+            {
+                // 世界对齐：不受父节点非等比缩放/旋转影响（根节点 3.5×4）
+                indicatorSprite.transform.SetPositionAndRotation(
+                    detectCenter.position, Quaternion.identity);
+            }
         }
 
         if (!show)
@@ -100,7 +107,13 @@ public class SeekerRangeIndicator : MonoBehaviour
     bool ShouldShowIndicator()
     {
         if (roomPlayer == null) return false;
-        return roomPlayer.isLocalPlayer && roomPlayer.Role == PlayerRole.Seeker;
+        if (!roomPlayer.isLocalPlayer || roomPlayer.Role != PlayerRole.Seeker)
+            return false;
+        // Prep：抓捕者近视且不可调查，隐藏探测圈
+        if (GameContract.IsBound && GameContract.State != null
+            && GameContract.State.Phase == GamePhase.Prep)
+            return false;
+        return true;
     }
 
     void FindAndHighlightUnderCursor()
@@ -115,7 +128,7 @@ public class SeekerRangeIndicator : MonoBehaviour
         {
             if (obj == null) continue;
             Vector2 pos = obj.transform.position;
-            if (Vector2.Distance(origin, pos) > detectRadius) continue;
+            if (!GameConstants.IsInInvestigateRange(origin, pos)) continue;
 
             float dMouse = Vector2.Distance(mousePos, pos);
             if (dMouse > pickRadius || dMouse >= bestDist) continue;
@@ -133,7 +146,7 @@ public class SeekerRangeIndicator : MonoBehaviour
                 continue;
 
             Vector2 pos = rp.transform.position;
-            if (Vector2.Distance(origin, pos) > detectRadius) continue;
+            if (!GameConstants.IsInInvestigateRange(origin, pos)) continue;
 
             float dMouse = Vector2.Distance(mousePos, pos);
             if (dMouse > pickRadius || dMouse >= bestDist) continue;
@@ -227,25 +240,35 @@ public class SeekerRangeIndicator : MonoBehaviour
         }
     }
 
-    /// <summary>按世界半径对齐圆 Sprite 的 localScale（不受父节点 0.1 / 3.5×4 缩放干扰）。</summary>
+    /// <summary>
+    /// 按世界半轴对齐椭圆 Sprite：对父节点 X/Y 非等比 lossyScale 分别补偿，
+    /// 再按 InvestigateRangeX/Y 拉成竖直略长的探测椭圆。
+    /// </summary>
     void ApplyIndicatorScale(float pulseMul)
     {
         if (indicatorSprite == null) return;
 
-        float parentLossy = 1f;
+        float parentLossyX = 1f;
+        float parentLossyY = 1f;
         if (indicatorSprite.transform.parent != null)
         {
             Vector3 ls = indicatorSprite.transform.parent.lossyScale;
-            parentLossy = Mathf.Max(0.0001f, (Mathf.Abs(ls.x) + Mathf.Abs(ls.y)) * 0.5f);
+            parentLossyX = Mathf.Max(0.0001f, Mathf.Abs(ls.x));
+            parentLossyY = Mathf.Max(0.0001f, Mathf.Abs(ls.y));
         }
 
-        float spriteRadius = 0.5f;
+        float spriteRadiusX = 0.5f;
+        float spriteRadiusY = 0.5f;
         if (indicatorSprite.sprite != null)
-            spriteRadius = Mathf.Max(0.0001f, indicatorSprite.sprite.bounds.extents.x);
+        {
+            Bounds b = indicatorSprite.sprite.bounds;
+            spriteRadiusX = Mathf.Max(0.0001f, b.extents.x);
+            spriteRadiusY = Mathf.Max(0.0001f, b.extents.y);
+        }
 
-        float local = detectRadius / (parentLossy * spriteRadius);
-        float s = local * pulseMul;
-        indicatorSprite.transform.localScale = new Vector3(s, s, 1f);
+        float sx = detectRadiusX / (parentLossyX * spriteRadiusX) * pulseMul;
+        float sy = detectRadiusY / (parentLossyY * spriteRadiusY) * pulseMul;
+        indicatorSprite.transform.localScale = new Vector3(sx, sy, 1f);
     }
 
     void OnDrawGizmos()
@@ -253,13 +276,10 @@ public class SeekerRangeIndicator : MonoBehaviour
         if (!showGizmos) return;
         if (detectCenter == null) detectCenter = transform;
 
-        float radius = Application.isPlaying ? detectRadius : GameConstants.InvestigateRange;
+        float rx = Application.isPlaying ? detectRadiusX : GameConstants.InvestigateRangeX;
+        float ry = Application.isPlaying ? detectRadiusY : GameConstants.InvestigateRangeY;
         Color currentGizmoColor = hasHighlightTarget ? gizmoActiveColor : gizmoColor;
-        Gizmos.color = currentGizmoColor;
-        Gizmos.DrawWireSphere(detectCenter.position, radius);
-
-        Gizmos.color = new Color(currentGizmoColor.r, currentGizmoColor.g, currentGizmoColor.b, 0.15f);
-        Gizmos.DrawSphere(detectCenter.position, radius);
+        DrawEllipseGizmo(detectCenter.position, rx, ry, currentGizmoColor, filled: true);
 
         Gizmos.color = Color.yellow;
         Gizmos.DrawWireSphere(detectCenter.position, 0.1f);
@@ -270,15 +290,29 @@ public class SeekerRangeIndicator : MonoBehaviour
         if (!showGizmos) return;
         if (detectCenter == null) return;
 
-        float radius = Application.isPlaying ? detectRadius : GameConstants.InvestigateRange;
-        Gizmos.color = Color.cyan;
-        Gizmos.DrawWireSphere(detectCenter.position, radius);
+        float rx = Application.isPlaying ? detectRadiusX : GameConstants.InvestigateRangeX;
+        float ry = Application.isPlaying ? detectRadiusY : GameConstants.InvestigateRangeY;
+        DrawEllipseGizmo(detectCenter.position, rx, ry, Color.cyan, filled: false);
 
 #if UNITY_EDITOR
         UnityEditor.Handles.Label(
-            detectCenter.position + new Vector3(radius, 0, 0),
-            $"探测圈: {radius:F1}"
+            detectCenter.position + new Vector3(rx, 0, 0),
+            $"探测椭圆: {rx:F1}×{ry:F1}"
         );
 #endif
+    }
+
+    static void DrawEllipseGizmo(Vector3 center, float radiusX, float radiusY, Color color, bool filled)
+    {
+        Matrix4x4 old = Gizmos.matrix;
+        Gizmos.matrix = Matrix4x4.TRS(center, Quaternion.identity, new Vector3(radiusX, radiusY, 1f));
+        Gizmos.color = color;
+        Gizmos.DrawWireSphere(Vector3.zero, 1f);
+        if (filled)
+        {
+            Gizmos.color = new Color(color.r, color.g, color.b, 0.15f);
+            Gizmos.DrawSphere(Vector3.zero, 1f);
+        }
+        Gizmos.matrix = old;
     }
 }

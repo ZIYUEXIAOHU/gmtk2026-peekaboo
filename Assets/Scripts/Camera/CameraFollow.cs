@@ -13,13 +13,13 @@ public class CameraFollow : MonoBehaviour
     [Tooltip("大厅世界内容范围；镜头画面（含可视半宽半高）不会超出此矩形")]
     public bool useLobbyBounds = true;
     public Vector2 lobbyMinBounds = new Vector2(-11f, -13f);
-    public Vector2 lobbyMaxBounds = new Vector2(11f, 4f);
+    public Vector2 lobbyMaxBounds = new Vector2(11f, 0f);
 
     [Header("对局地图边界（Prep / Playing）")]
     [Tooltip("四房间整体范围；玩家不在任何楼层区间时的兜底边界")]
     public bool useMatchBounds = true;
-    public Vector2 matchMinBounds = new Vector2(-22.5f, -12.2f);
-    public Vector2 matchMaxBounds = new Vector2(22.5f, 11.8f);
+    public Vector2 matchMinBounds = new Vector2(-22.5f, -11f);
+    public Vector2 matchMaxBounds = new Vector2(22.5f, 12f);
 
     [Tooltip("对局分楼层边界：按玩家 Y 选择所在楼层，镜头只在该楼层矩形内活动")]
     public FloorBounds[] matchFloors = new FloorBounds[]
@@ -27,24 +27,30 @@ public class CameraFollow : MonoBehaviour
         new FloorBounds
         {
             name = "二楼",
-            playerMinY = -0.2f,
+            playerMinY = 0.2f,
             playerMaxY = 1000f,
-            minBounds = new Vector2(-22.5f, -0.4f),
-            maxBounds = new Vector2(22.5f, 11.8f),
+            minBounds = new Vector2(-22.5f, 0.5f),
+            maxBounds = new Vector2(22.5f, 12f),
         },
         new FloorBounds
         {
             name = "一楼",
             playerMinY = -1000f,
-            playerMaxY = -0.2f,
-            minBounds = new Vector2(-22.5f, -12.2f),
-            maxBounds = new Vector2(22.5f, -0.1f),
+            playerMaxY = 0.2f,
+            minBounds = new Vector2(-22.5f, -11f),
+            maxBounds = new Vector2(22.5f, 0.2f),
         },
     };
 
     [Header("边界切换平滑")]
     [Tooltip("楼层/阶段边界切换时，边界矩形过渡到位所需时间（秒）；0 = 立即切换")]
     public float boundsBlendTime = 0.35f;
+
+    [Header("Seeker Prep 近视")]
+    [Tooltip("Prep 阶段本地抓捕者正交 Size；≤0 使用 GameConstants.SeekerPrepOrthoSize")]
+    public float seekerPrepOrthoSize = -1f;
+    [Tooltip("近视 / 恢复时的 Size 过渡时长（秒）；0 = 立即切换")]
+    public float orthoBlendTime = 0.35f;
 
     [Header("边界限制（运行时，由阶段/楼层刷新）")]
     public bool useBounds = false;
@@ -79,6 +85,12 @@ public class CameraFollow : MonoBehaviour
     private Vector2 blendMaxVelocity;
     private bool blendInitialized;
 
+    // Seeker Prep 近视：缓存正常 Size，向目标 Size 平滑
+    private float normalOrthoSize = 5f;
+    private float targetOrthoSize = 5f;
+    private float orthoVelocity;
+    private bool normalOrthoCached;
+
     [System.Serializable]
     public class SceneBounds
     {
@@ -104,6 +116,8 @@ public class CameraFollow : MonoBehaviour
     void Awake()
     {
         cam = GetComponent<Camera>();
+        CacheNormalOrthoSize();
+        targetOrthoSize = normalOrthoSize;
     }
 
     void Start()
@@ -118,7 +132,11 @@ public class CameraFollow : MonoBehaviour
 
         FindLocalPlayer();
         ApplySceneBounds();
-        ApplyPhaseBounds(GameContract.IsBound ? GameContract.State?.Phase ?? GamePhase.Waiting : GamePhase.Waiting);
+        GamePhase startPhase = GameContract.IsBound
+            ? GameContract.State?.Phase ?? GamePhase.Waiting
+            : GamePhase.Waiting;
+        ApplyPhaseBounds(startPhase);
+        ApplySeekerPrepMyopia(startPhase);
         TrySubscribePhase();
     }
 
@@ -159,6 +177,9 @@ public class CameraFollow : MonoBehaviour
 
     void LateUpdate()
     {
+        // 近视 Size 与跟随解耦：即使尚未绑到本地玩家也要过渡
+        BlendOrthoSize();
+
         if (!isFollowing || target == null) return;
 
         RefreshTargetBounds();
@@ -335,7 +356,9 @@ public class CameraFollow : MonoBehaviour
         boundEvents = GameContract.Events;
         boundEvents.OnPhaseChanged += OnPhaseChanged;
         phaseSubscribed = true;
-        ApplyPhaseBounds(GameContract.State?.Phase ?? GamePhase.Waiting);
+        GamePhase phase = GameContract.State?.Phase ?? GamePhase.Waiting;
+        ApplyPhaseBounds(phase);
+        ApplySeekerPrepMyopia(phase);
     }
 
     void UnsubscribePhase()
@@ -352,6 +375,7 @@ public class CameraFollow : MonoBehaviour
     void OnPhaseChanged(GamePhase phase, float duration)
     {
         ApplyPhaseBounds(phase);
+        ApplySeekerPrepMyopia(phase);
     }
 
     /// <summary>
@@ -364,6 +388,65 @@ public class CameraFollow : MonoBehaviour
         RefreshTargetBounds();
         SnapBlendedBounds();
         Debug.Log($"📏 镜头边界（{(inMatchPhase ? "对局" : "大厅")}）: use={useBounds} X({minBounds.x}~{maxBounds.x}) Y({minBounds.y}~{maxBounds.y})");
+    }
+
+    /// <summary>
+    /// Prep 阶段本地 Seeker 近视（缩小 ortho）；其余阶段恢复正常视野。
+    /// </summary>
+    void ApplySeekerPrepMyopia(GamePhase phase)
+    {
+        CacheNormalOrthoSize();
+
+        bool myopia = phase == GamePhase.Prep && IsLocalSeeker();
+        float prepSize = seekerPrepOrthoSize > 0f
+            ? seekerPrepOrthoSize
+            : GameConstants.SeekerPrepOrthoSize;
+        targetOrthoSize = myopia ? prepSize : normalOrthoSize;
+
+        if (orthoBlendTime <= 0f && cam != null && cam.orthographic)
+        {
+            cam.orthographicSize = targetOrthoSize;
+            orthoVelocity = 0f;
+        }
+
+        Debug.Log($"👁 Seeker Prep 近视: {(myopia ? "开启" : "关闭")} targetSize={targetOrthoSize:F2}");
+    }
+
+    void CacheNormalOrthoSize()
+    {
+        if (normalOrthoCached) return;
+        if (cam == null)
+            cam = GetComponent<Camera>();
+        if (cam == null || !cam.orthographic) return;
+
+        normalOrthoSize = cam.orthographicSize;
+        normalOrthoCached = true;
+    }
+
+    static bool IsLocalSeeker()
+    {
+        if (!GameContract.IsBound || GameContract.State == null) return false;
+        IPlayerStateReadonly local = GameContract.State.LocalPlayer;
+        return local != null && local.Role == PlayerRole.Seeker;
+    }
+
+    void BlendOrthoSize()
+    {
+        if (cam == null || !cam.orthographic) return;
+
+        if (orthoBlendTime <= 0f)
+        {
+            cam.orthographicSize = targetOrthoSize;
+            orthoVelocity = 0f;
+            return;
+        }
+
+        cam.orthographicSize = Mathf.SmoothDamp(
+            cam.orthographicSize,
+            targetOrthoSize,
+            ref orthoVelocity,
+            orthoBlendTime
+        );
     }
 
     void ApplySceneBounds()
@@ -441,6 +524,9 @@ public class CameraFollow : MonoBehaviour
         isFollowing = t != null;
         currentFloorIndex = -1;
         velocity = Vector3.zero;
+        // 本地玩家身份就绪后，按当前阶段刷新近视
+        if (GameContract.IsBound && GameContract.State != null)
+            ApplySeekerPrepMyopia(GameContract.State.Phase);
     }
 
     public void SetBounds(Vector2 min, Vector2 max, bool use = true)

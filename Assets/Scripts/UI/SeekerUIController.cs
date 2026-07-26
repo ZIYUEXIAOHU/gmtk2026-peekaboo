@@ -119,19 +119,19 @@ public class SeekerUIController : MonoBehaviour
             switch (phase)
             {
                 case GamePhase.Waiting:
-                    stateText = "⏳ WAITING...";
+                    stateText = "WAITING...";
                     break;
                 case GamePhase.Prep:
-                    stateText = "⏳ PREP PHASE";
+                    stateText = "PREP PHASE";
                     break;
                 case GamePhase.Playing:
-                    stateText = "🔴 SEEKING...";
+                    stateText = "SEEKING...";
                     break;
                 case GamePhase.Ended:
-                    stateText = "🏁 GAME OVER";
+                    stateText = "GAME OVER";
                     break;
                 default:
-                    stateText = "🔴 SEEKER";
+                    stateText = "SEEKER";
                     break;
             }
             seekerStateText.text = stateText;
@@ -215,8 +215,8 @@ public class SeekerUIController : MonoBehaviour
         if (seekerStateText != null)
         {
             string resultText = result.result == GameResult.HidersWin 
-                ? "❌ HIDERS WIN!" 
-                : "✅ SEEKERS WIN!";
+                ? "HIDERS WIN!" 
+                : "SEEKERS WIN!";
             seekerStateText.text = resultText;
         }
         Debug.Log($"🏁 游戏结束: {result.result}");

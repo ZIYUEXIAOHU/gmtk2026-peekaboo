@@ -48,9 +48,9 @@ public class SoundManager : MonoBehaviour, IAudioService
     [Tooltip("游戏背景音乐（进入对局时切换）")]
     public AudioClip gameMusic;
 
-    private float currentMasterVolume = 0.8f;
-    private float currentMusicVolume = 0.3f;
-    private float currentSFXVolume = 0.6f;
+    private float currentMasterVolume = GameConstants.DefaultMasterVolume;
+    private float currentMusicVolume = GameConstants.DefaultMusicVolume;
+    private float currentSFXVolume = GameConstants.DefaultSFXVolume;
 
     // 当前播放状态
     private bool isHeartbeatPlaying = false;
@@ -98,44 +98,60 @@ public class SoundManager : MonoBehaviour, IAudioService
         }
     }
 
-    // ==================== 音量加载与保存 ====================
+    // ==================== 音量加载与保存（玩家档案） ====================
 
     void LoadVolumes()
     {
-        currentMasterVolume = PlayerPrefs.GetFloat("MasterVolume", 0.8f);
-        currentMusicVolume = PlayerPrefs.GetFloat("MusicVolume", 0.3f);
-        currentSFXVolume = PlayerPrefs.GetFloat("SFXVolume", 0.6f);
+        PlayerProfile.Load();
+        currentMasterVolume = PlayerProfile.MasterVolume;
+        currentMusicVolume = PlayerProfile.MusicVolume;
+        currentSFXVolume = PlayerProfile.SFXVolume;
     }
 
     void ApplyVolumes()
     {
-        SetMasterVolume(currentMasterVolume);
-        SetMusicVolume(currentMusicVolume);
-        SetSFXVolume(currentSFXVolume);
+        ApplyMasterVolume(currentMasterVolume);
+        ApplyMusicVolume(currentMusicVolume);
+        ApplySFXVolume(currentSFXVolume);
     }
 
     // ==================== IAudioService 实现 - 音量 ====================
 
     public void SetMasterVolume(float value)
     {
-        currentMasterVolume = Mathf.Clamp01(value);
-        if (audioMixer != null)
-        {
-            audioMixer.SetFloat("MasterVolume", Mathf.Log10(Mathf.Max(0.0001f, value)) * 20);
-        }
-        else
-        {
-            AudioListener.volume = value;
-        }
-        PlayerPrefs.SetFloat("MasterVolume", currentMasterVolume);
-        PlayerPrefs.Save();
+        ApplyMasterVolume(value);
+        PlayerProfile.SetMasterVolume(currentMasterVolume);
     }
 
     public void SetMusicVolume(float value)
     {
+        ApplyMusicVolume(value);
+        PlayerProfile.SetMusicVolume(currentMusicVolume);
+    }
+
+    public void SetSFXVolume(float value)
+    {
+        ApplySFXVolume(value);
+        PlayerProfile.SetSFXVolume(currentSFXVolume);
+    }
+
+    void ApplyMasterVolume(float value)
+    {
+        currentMasterVolume = Mathf.Clamp01(value);
+        if (audioMixer != null)
+        {
+            audioMixer.SetFloat("MasterVolume", Mathf.Log10(Mathf.Max(0.0001f, currentMasterVolume)) * 20);
+        }
+        else
+        {
+            AudioListener.volume = currentMasterVolume;
+        }
+    }
+
+    void ApplyMusicVolume(float value)
+    {
         currentMusicVolume = Mathf.Clamp01(value);
-        
-        // ===== 直接控制 musicSource.volume（不依赖 AudioMixer） =====
+
         if (musicSource != null)
         {
             musicSource.volume = currentMusicVolume;
@@ -145,27 +161,22 @@ public class SoundManager : MonoBehaviour, IAudioService
         {
             Debug.LogWarning("⚠️ musicSource 未绑定，无法设置音乐音量");
         }
-        
-        PlayerPrefs.SetFloat("MusicVolume", currentMusicVolume);
-        PlayerPrefs.Save();
     }
 
-    public void SetSFXVolume(float value)
+    void ApplySFXVolume(float value)
     {
         currentSFXVolume = Mathf.Clamp01(value);
         if (audioMixer != null)
         {
-            audioMixer.SetFloat("SFXVolume", Mathf.Log10(Mathf.Max(0.0001f, value)) * 20);
+            audioMixer.SetFloat("SFXVolume", Mathf.Log10(Mathf.Max(0.0001f, currentSFXVolume)) * 20);
         }
         else
         {
-            if (sfxSource != null) sfxSource.volume = value;
-            if (globalSource != null) globalSource.volume = value;
-            if (seekerHeartbeatSource != null) seekerHeartbeatSource.volume = value;
-            if (seekerPencilSource != null) seekerPencilSource.volume = value;
+            if (sfxSource != null) sfxSource.volume = currentSFXVolume;
+            if (globalSource != null) globalSource.volume = currentSFXVolume;
+            if (seekerHeartbeatSource != null) seekerHeartbeatSource.volume = currentSFXVolume;
+            if (seekerPencilSource != null) seekerPencilSource.volume = currentSFXVolume;
         }
-        PlayerPrefs.SetFloat("SFXVolume", currentSFXVolume);
-        PlayerPrefs.Save();
     }
 
     public float GetMasterVolume() => currentMasterVolume;

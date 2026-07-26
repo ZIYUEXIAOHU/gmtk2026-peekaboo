@@ -7041,21 +7041,21 @@ MonoBehaviour:
   snapDistance: 8
   useLobbyBounds: 1
   lobbyMinBounds: {x: -11, y: -13}
-  lobbyMaxBounds: {x: 11, y: 4}
+  lobbyMaxBounds: {x: 11, y: 0}
   useMatchBounds: 1
-  matchMinBounds: {x: -22.5, y: -12.2}
-  matchMaxBounds: {x: 22.5, y: 11.8}
+  matchMinBounds: {x: -22.5, y: -11}
+  matchMaxBounds: {x: 22.5, y: 12}
   matchFloors:
   - name: "\u4E8C\u697C"
-    playerMinY: -0.2
+    playerMinY: 0.2
     playerMaxY: 1000
-    minBounds: {x: -22.5, y: -0.4}
-    maxBounds: {x: 22.5, y: 11.8}
+    minBounds: {x: -22.5, y: 0.5}
+    maxBounds: {x: 22.5, y: 12}
   - name: "\u4E00\u697C"
     playerMinY: -1000
-    playerMaxY: -0.2
-    minBounds: {x: -22.5, y: -12.2}
-    maxBounds: {x: 22.5, y: -0.1}
+    playerMaxY: 0.2
+    minBounds: {x: -22.5, y: -11}
+    maxBounds: {x: 22.5, y: 0.2}
   boundsBlendTime: 0.35
   useBounds: 1
   minBounds: {x: -11, y: -13}
@@ -20114,10 +20114,10 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 0cd44c1031e13a943bb63640046fad76, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  m_UiScaleMode: 0
+  m_UiScaleMode: 1
   m_ReferencePixelsPerUnit: 100
   m_ScaleFactor: 1
-  m_ReferenceResolution: {x: 800, y: 600}
+  m_ReferenceResolution: {x: 1920, y: 1080}
   m_ScreenMatchMode: 0
   m_MatchWidthOrHeight: 0
   m_PhysicalUnit: 3

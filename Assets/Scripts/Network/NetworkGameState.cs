@@ -590,7 +590,6 @@ public class NetworkGameState : NetworkBehaviour, IGameStateReadonly, IGameComma
         if (!TryFindInvestigableUnderCursor(
                 origin,
                 mouseWorldPosition,
-                GameConstants.InvestigateRange,
                 GameConstants.InvestigateCursorPickRadius,
                 out InvestigableTarget target))
         {
@@ -750,6 +749,8 @@ public class NetworkGameState : NetworkBehaviour, IGameStateReadonly, IGameComma
     [Server]
     private void StartPrepPhase()
     {
+        // 清掉 Waiting 练习大厅放置物，避免进入 Prep/Playing 后残留
+        ServerClearPlacedInvestigables();
         ActivateMatchMap();
         ScatterHiderSpawns();
         foreach (RoomPlayer hider in GetAllRoomPlayers().Where(p => p.role == PlayerRole.Hider))
@@ -1149,8 +1150,8 @@ public class NetworkGameState : NetworkBehaviour, IGameStateReadonly, IGameComma
                 {
                     seekerNetId = seeker.netId,
                     center = seeker.transform.position,
-                    // 跳动范围与探测圈一致（HeartbeatRadius 须等于 InvestigateRange）
-                    radius = GameConstants.HeartbeatRadius,
+                    // 跳动范围与探测椭圆一致（广播外接半径，客户端按 X/Y 半轴裁定）
+                    radius = Mathf.Max(GameConstants.HeartbeatRadiusX, GameConstants.HeartbeatRadiusY),
                     beatIndex = heartbeatBeatIndex,
                     serverTime = serverTime,
                 });
@@ -1301,7 +1302,6 @@ public class NetworkGameState : NetworkBehaviour, IGameStateReadonly, IGameComma
     private bool TryFindInvestigableUnderCursor(
         Vector2 seekerPos,
         Vector2 mousePos,
-        float seekerRange,
         float cursorPickRadius,
         out InvestigableTarget best)
     {
@@ -1313,7 +1313,7 @@ public class NetworkGameState : NetworkBehaviour, IGameStateReadonly, IGameComma
         {
             if (obj == null || obj.netId == GameConstants.InvalidNetId) continue;
             Vector2 pos = obj.transform.position;
-            if (Vector2.Distance(seekerPos, pos) > seekerRange) continue;
+            if (!GameConstants.IsInInvestigateRange(seekerPos, pos)) continue;
 
             float dMouse = Vector2.Distance(mousePos, pos);
             if (dMouse > cursorPickRadius || dMouse >= bestDist) continue;
@@ -1347,7 +1347,7 @@ public class NetworkGameState : NetworkBehaviour, IGameStateReadonly, IGameComma
                 continue;
 
             Vector2 pos = hider.transform.position;
-            if (Vector2.Distance(seekerPos, pos) > seekerRange) continue;
+            if (!GameConstants.IsInInvestigateRange(seekerPos, pos)) continue;
 
             float dMouse = Vector2.Distance(mousePos, pos);
             if (dMouse > cursorPickRadius || dMouse >= bestDist) continue;

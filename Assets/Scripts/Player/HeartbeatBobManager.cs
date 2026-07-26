@@ -123,15 +123,15 @@ public class HeartbeatBobManager : MonoBehaviour
     void OnHeartbeatPulse(HeartbeatPulse pulse)
     {
         Vector2 center = pulse.center;
-        float radius = pulse.radius > 0f ? pulse.radius : GameConstants.HeartbeatRadius;
-        radius = Mathf.Max(radius, GameConstants.InvestigateRange);
         float keepAlive = Time.time + GameConstants.HeartbeatInterval * InRangeGraceMul;
 
         foreach (InvestigableObject obj in FindObjectsOfType<InvestigableObject>())
         {
             if (obj == null) continue;
             if (obj.LinksToHider) continue;
-            if (Vector2.Distance(center, obj.transform.position) > radius) continue;
+            // 与探测椭圆一致（HeartbeatRadiusX/Y = InvestigateRangeX/Y）
+            if (!GameConstants.IsInInvestigateRange(center, obj.transform.position))
+                continue;
 
             Transform visual = ResolveItemVisual(obj.transform);
             if (visual == null) continue;

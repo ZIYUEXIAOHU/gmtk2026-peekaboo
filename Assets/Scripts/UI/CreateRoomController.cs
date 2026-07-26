@@ -126,11 +126,7 @@ public class CreateRoomController : MonoBehaviour
     
     string GetDefaultRoomName()
     {
-        string raw = PlayerPrefs.GetString(GameConstants.PlayerNamePrefsKey, string.Empty);
-        string playerName = string.IsNullOrWhiteSpace(raw)
-            ? GameConstants.DefaultPlayerName
-            : RoomPlayer.SanitizePlayerName(raw);
-        return $"{playerName}'s Room";
+        return $"{PlayerProfile.PlayerName}'s Room";
     }
     
     void CreateRoom()

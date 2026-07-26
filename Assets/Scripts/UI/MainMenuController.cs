@@ -173,10 +173,8 @@ public class MainMenuController : MonoBehaviour
     
     void LoadPlayerName()
     {
-        string raw = PlayerPrefs.GetString(GameConstants.PlayerNamePrefsKey, string.Empty);
-        currentPlayerName = string.IsNullOrWhiteSpace(raw)
-            ? GameConstants.DefaultPlayerName
-            : RoomPlayer.SanitizePlayerName(raw);
+        PlayerProfile.Load();
+        currentPlayerName = PlayerProfile.PlayerName;
 
         if (playerNameInput != null)
             playerNameInput.text = currentPlayerName;
@@ -186,12 +184,10 @@ public class MainMenuController : MonoBehaviour
 
     void OnPlayerNameChanged(string newName)
     {
-        currentPlayerName = RoomPlayer.SanitizePlayerName(newName);
+        PlayerProfile.SetPlayerName(newName);
+        currentPlayerName = PlayerProfile.PlayerName;
         if (playerNameInput != null)
             playerNameInput.text = currentPlayerName;
-
-        PlayerPrefs.SetString(GameConstants.PlayerNamePrefsKey, currentPlayerName);
-        PlayerPrefs.Save();
 
         Debug.Log($"📛 玩家名称已更新: {currentPlayerName}");
     }
@@ -312,6 +308,9 @@ public class MainMenuController : MonoBehaviour
     {
         if (roleSelectPanel == null) return;
         roleSelectPanel.SetActive(visible);
+        // Join 流程选角时隐藏 Join/Back，避免与 HIDER/HUNTER 按钮重叠
+        if (_joinPanelOpen)
+            SetJoinActionButtonsVisible(!visible);
         if (visible)
         {
             // 选角时藏起写名字，并用独立 Canvas 强制盖在最上层
@@ -320,6 +319,14 @@ public class MainMenuController : MonoBehaviour
             roleSelectPanel.transform.SetAsLastSibling();
             Debug.Log("[MainMenu] 身份选择面板已显示");
         }
+    }
+
+    void SetJoinActionButtonsVisible(bool visible)
+    {
+        if (joinBtn != null)
+            joinBtn.gameObject.SetActive(visible);
+        if (joinBackBtn != null)
+            joinBackBtn.gameObject.SetActive(visible);
     }
 
     void EnsureRoleSelectSortsOnTop()
@@ -544,6 +551,7 @@ public class MainMenuController : MonoBehaviour
             mainMenuPanel.SetActive(false);
 
         SetNamePanelVisible(false);
+        SetJoinActionButtonsVisible(true);
         
         if (statusText != null)
             statusText.text = "📋 Enter room code, tap JOIN, then select a role";
@@ -927,14 +935,14 @@ public class MainMenuController : MonoBehaviour
     
     void LoadSettings()
     {
-        float master = PlayerPrefs.GetFloat("MasterVolume", 0.8f);
-        float music = PlayerPrefs.GetFloat("MusicVolume", 0.3f);
-        float sfx = PlayerPrefs.GetFloat("SFXVolume", 0.6f);
-        
+        float master = PlayerProfile.MasterVolume;
+        float music = PlayerProfile.MusicVolume;
+        float sfx = PlayerProfile.SFXVolume;
+
         if (masterVolumeSlider != null) masterVolumeSlider.value = master;
         if (musicVolumeSlider != null) musicVolumeSlider.value = music;
         if (sfxVolumeSlider != null) sfxVolumeSlider.value = sfx;
-        
+
         // ===== 通过契约同步音量 =====
         if (GameContract.IsAudioBound)
         {
@@ -947,40 +955,40 @@ public class MainMenuController : MonoBehaviour
             AudioListener.volume = master;
         }
     }
-    
+
     void OnMasterVolumeChanged(float value)
     {
         if (masterVolumeText != null)
             masterVolumeText.text = Mathf.RoundToInt(value * 100) + "%";
-        
-        // ===== 通过契约设置音量 =====
+
         if (GameContract.IsAudioBound)
             GameContract.Audio.SetMasterVolume(value);
         else
+        {
             AudioListener.volume = value;
-        
-        PlayerPrefs.SetFloat("MasterVolume", value);
+            PlayerProfile.SetMasterVolume(value);
+        }
     }
-    
+
     void OnMusicVolumeChanged(float value)
     {
         if (musicVolumeText != null)
             musicVolumeText.text = Mathf.RoundToInt(value * 100) + "%";
-        
+
         if (GameContract.IsAudioBound)
             GameContract.Audio.SetMusicVolume(value);
-        
-        PlayerPrefs.SetFloat("MusicVolume", value);
+        else
+            PlayerProfile.SetMusicVolume(value);
     }
-    
+
     void OnSFXVolumeChanged(float value)
     {
         if (sfxVolumeText != null)
             sfxVolumeText.text = Mathf.RoundToInt(value * 100) + "%";
-        
+
         if (GameContract.IsAudioBound)
             GameContract.Audio.SetSFXVolume(value);
-        
-        PlayerPrefs.SetFloat("SFXVolume", value);
+        else
+            PlayerProfile.SetSFXVolume(value);
     }
 }

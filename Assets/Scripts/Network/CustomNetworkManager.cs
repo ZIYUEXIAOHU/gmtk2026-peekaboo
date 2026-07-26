@@ -117,6 +117,27 @@ public class CustomNetworkManager : NetworkManager
         {
             Debug.LogWarning("⚠ Resources/InvestigableItemPlaceholder 未找到，放置物 Spawn 可能失败。");
         }
+
+        // ItemTable 放置物必须在客户端连入前注册。
+        // Mirror 对后来者的初始 spawn 批次早于 NetworkGameState.OnStartClient，
+        // 若只在 OnStartClient 注册，后来者会收不到大厅里已放置的物品。
+        ItemTable itemTable = Resources.Load<ItemTable>("ItemTable");
+        if (itemTable != null)
+        {
+            int registered = 0;
+            for (int i = 0; i < itemTable.Count; i++)
+            {
+                ItemTable.Entry entry = itemTable.Get(i);
+                if (entry?.prefab == null) continue;
+                NetworkClient.RegisterPrefab(entry.prefab);
+                registered++;
+            }
+            Debug.Log($"✅ ItemTable 放置物已提前注册：{registered}/{itemTable.Count}");
+        }
+        else
+        {
+            Debug.LogError("❌ Resources/ItemTable 未找到！后来者将无法看到已放置物品。");
+        }
         
         prefabsLoaded = true;
         

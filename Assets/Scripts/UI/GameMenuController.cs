@@ -99,11 +99,11 @@ public class GameMenuController : MonoBehaviour
             if (GameContract.IsBound && GameContract.State != null)
             {
                 float timeLeft = GameContract.State.PhaseTimeLeft;
-                timeText.text = $"⏱️ {Mathf.CeilToInt(timeLeft)}s";
+                timeText.text = $"{Mathf.CeilToInt(timeLeft)}s";
             }
             else
             {
-                timeText.text = "⏱️ --s";
+                timeText.text = "--s";
             }
         }
         
@@ -114,11 +114,11 @@ public class GameMenuController : MonoBehaviour
             {
                 int alive = GameContract.State.AliveHiders;
                 int total = GameContract.State.TotalHiders;
-                aliveText.text = $"🟢 {alive}/{total}";
+                aliveText.text = $"{alive}/{total}";
             }
             else
             {
-                aliveText.text = "🟢 -/-";
+                aliveText.text = "-/-";
             }
         }
     }
@@ -225,51 +225,48 @@ public class GameMenuController : MonoBehaviour
     {
         if (masterVolumeText != null)
             masterVolumeText.text = Mathf.RoundToInt(value * 100) + "%";
-        
-        // ===== 通过契约设置主音量 =====
+
         if (GameContract.IsAudioBound)
             GameContract.Audio.SetMasterVolume(value);
         else
+        {
             AudioListener.volume = value;
-        
-        PlayerPrefs.SetFloat("MasterVolume", value);
+            PlayerProfile.SetMasterVolume(value);
+        }
     }
-    
+
     void OnMusicVolumeChanged(float value)
     {
         if (musicVolumeText != null)
             musicVolumeText.text = Mathf.RoundToInt(value * 100) + "%";
-        
-        // ===== 通过契约设置音乐音量 =====
+
         if (GameContract.IsAudioBound)
             GameContract.Audio.SetMusicVolume(value);
-        
-        PlayerPrefs.SetFloat("MusicVolume", value);
+        else
+            PlayerProfile.SetMusicVolume(value);
     }
-    
+
     void OnSFXVolumeChanged(float value)
     {
         if (sfxVolumeText != null)
             sfxVolumeText.text = Mathf.RoundToInt(value * 100) + "%";
-        
-        // ===== 通过契约设置音效音量 =====
+
         if (GameContract.IsAudioBound)
             GameContract.Audio.SetSFXVolume(value);
-        
-        PlayerPrefs.SetFloat("SFXVolume", value);
+        else
+            PlayerProfile.SetSFXVolume(value);
     }
-    
+
     void LoadVolumes()
     {
-        float master = PlayerPrefs.GetFloat("MasterVolume", 0.8f);
-        float music = PlayerPrefs.GetFloat("MusicVolume", 0.3f);
-        float sfx = PlayerPrefs.GetFloat("SFXVolume", 0.6f);
-        
+        float master = PlayerProfile.MasterVolume;
+        float music = PlayerProfile.MusicVolume;
+        float sfx = PlayerProfile.SFXVolume;
+
         if (masterVolumeSlider != null) masterVolumeSlider.value = master;
         if (musicVolumeSlider != null) musicVolumeSlider.value = music;
         if (sfxVolumeSlider != null) sfxVolumeSlider.value = sfx;
-        
-        // ===== 通过契约同步音量 =====
+
         if (GameContract.IsAudioBound)
         {
             GameContract.Audio.SetMasterVolume(master);

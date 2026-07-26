@@ -12,7 +12,7 @@ public class SeekerController : NetworkBehaviour
     public float speedMultiplier = 10f;  // 速度倍率，可在 Inspector 调整
     
     [Header("交互范围（使用契约常量）")]
-    public float investigateRange = GameConstants.InvestigateRange;  // 5.0
+    public float investigateRange = GameConstants.InvestigateRangeY;  // 竖直半轴 7.0
     public float slashRange = GameConstants.SlashRange;  // 2.0
     
     [Header("检测")]
@@ -167,14 +167,14 @@ public class SeekerController : NetworkBehaviour
         TrySubscribeGameEvents();
         UpdateTransformLockVisual();
         
-        // ===== 移动 (A/D)；攻击硬直 / 变身波锁定期间不可移动 =====
+        // ===== 移动 (A/D)；Prep / 攻击硬直 / 变身波锁定期间不可移动 =====
         if (IsMoveLocked)
             moveInput = 0f;
         else
             moveInput = Input.GetAxisRaw("Horizontal");
         
-        // ===== 调查 (F) =====
-        if (Input.GetKeyDown(testInvestigateKey) && !IsTransformLocked)
+        // ===== 调查 (F)；Prep 与变身波期间不可调查 =====
+        if (Input.GetKeyDown(testInvestigateKey) && !IsTransformLocked && !IsPrepLocked)
         {
             Investigate();
         }
@@ -245,7 +245,14 @@ public class SeekerController : NetworkBehaviour
     /// <summary>变身波锁定：用 NetworkTime.time 与 invulnerableUntil 比较，抵抗延迟。</summary>
     public bool IsTransformLocked => NetworkTime.time < transformLockUntil;
 
-    public bool IsMoveLocked => IsAttackMoveLocked || IsTransformLocked;
+    /// <summary>Prep 准备阶段：抓捕者不可移动、调查、劈砍（躲藏者布置期间）。</summary>
+    public bool IsPrepLocked =>
+        !testMode
+        && GameContract.IsBound
+        && GameContract.State != null
+        && GameContract.State.Phase == GamePhase.Prep;
+
+    public bool IsMoveLocked => IsAttackMoveLocked || IsTransformLocked || IsPrepLocked;
 
     void TrySubscribeGameEvents()
     {
