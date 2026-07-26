@@ -158,7 +158,7 @@ public class CustomNetworkManager : NetworkManager
             return;
         }
 
-        string playerName = $"玩家{conn.connectionId + 1}";
+        string playerName = GameConstants.DefaultPlayerName;
         playerNames[conn.connectionId] = playerName;
 
         if (playerPrefab == null)

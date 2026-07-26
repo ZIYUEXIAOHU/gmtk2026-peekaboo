@@ -59,7 +59,13 @@ public class LobbyRoomController : MonoBehaviour
             foreach (var conn in NetworkServer.connections.Values)
             {
                 localConnectionId = conn.connectionId;
-                localPlayerName = $"玩家{localConnectionId + 1}";
+                localPlayerName = GameConstants.DefaultPlayerName;
+                if (conn.identity != null)
+                {
+                    RoomPlayer hostRp = conn.identity.GetComponent<RoomPlayer>();
+                    if (hostRp != null && !string.IsNullOrEmpty(hostRp.playerName))
+                        localPlayerName = hostRp.playerName;
+                }
                 Debug.Log($"✅ 房主连接 ID: {localConnectionId}");
                 break;
             }
@@ -70,7 +76,9 @@ public class LobbyRoomController : MonoBehaviour
             if (rp != null)
             {
                 localConnectionId = rp.connectionId;
-                localPlayerName = rp.playerName;
+                localPlayerName = string.IsNullOrEmpty(rp.playerName)
+                    ? GameConstants.DefaultPlayerName
+                    : rp.playerName;
                 Debug.Log($"✅ 客户端连接 ID: {localConnectionId}");
             }
         }
@@ -82,12 +90,17 @@ public class LobbyRoomController : MonoBehaviour
                 if (player != null && player.isLocalPlayer)
                 {
                     localConnectionId = player.connectionId;
-                    localPlayerName = player.playerName;
+                    localPlayerName = string.IsNullOrEmpty(player.playerName)
+                        ? GameConstants.DefaultPlayerName
+                        : player.playerName;
                     Debug.Log($"✅ 通过场景 RoomPlayer 找到连接 ID: {localConnectionId}");
                     break;
                 }
             }
         }
+
+        if (string.IsNullOrEmpty(localPlayerName))
+            localPlayerName = GameConstants.DefaultPlayerName;
         
         isHost = (localConnectionId == 0);
         Debug.Log($"{(isHost ? "👑 你是房主" : "👤 你是普通玩家")}，连接ID: {localConnectionId}");
