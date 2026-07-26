@@ -43,6 +43,10 @@ public class RoomPlayer : NetworkBehaviour, IPlayerStateReadonly
     public GameObject visualHider;
     public GameObject visualSeeker;
 
+    /// <summary>Hider 必须高于 Seeker，避免同 Order 时重叠闪烁。</summary>
+    const int HiderSortingOrder = 20;
+    const int SeekerSortingOrder = 10;
+
     // ---- IPlayerStateReadonly ----
     public uint NetId => netId;
     public string PlayerName => playerName;
@@ -64,6 +68,7 @@ public class RoomPlayer : NetworkBehaviour, IPlayerStateReadonly
         CacheVisuals();
         ApplyRoleVisuals(role);
         ApplyRoleControllers(role);
+        CollisionLayers.ApplyPlayerRoleLayer(gameObject, role);
     }
 
     public override void OnStartServer()
@@ -72,6 +77,7 @@ public class RoomPlayer : NetworkBehaviour, IPlayerStateReadonly
         CacheVisuals();
         // 服务器 Spawn 前/后都需隐藏未选身份外观（Visual_Seeker 保持 Active）
         ApplyRoleVisuals(role);
+        CollisionLayers.ApplyPlayerRoleLayer(gameObject, role);
     }
 
     public override void OnStartLocalPlayer()
@@ -81,6 +87,7 @@ public class RoomPlayer : NetworkBehaviour, IPlayerStateReadonly
         CacheVisuals();
         ApplyRoleVisuals(role);
         ApplyRoleControllers(role);
+        CollisionLayers.ApplyPlayerRoleLayer(gameObject, role);
     }
 
     void Awake()
@@ -89,6 +96,7 @@ public class RoomPlayer : NetworkBehaviour, IPlayerStateReadonly
         // 尽早关掉外观，避免 Visual_Seeker 默认激活时闪一帧；
         // 但必须保持 Visual_Seeker 的 GameObject 激活，否则 NetworkAnimator 不会 Initialize，Spawn 会 OnSerialize NRE。
         ApplyRoleVisuals(role);
+        CollisionLayers.ApplyPlayerRoleLayer(gameObject, role);
     }
 
     void CacheControllers()
@@ -118,6 +126,7 @@ public class RoomPlayer : NetworkBehaviour, IPlayerStateReadonly
         Debug.Log($"玩家 {playerName} 身份: {oldRole} -> {newRole}");
         ApplyRoleVisuals(newRole);
         ApplyRoleControllers(newRole);
+        CollisionLayers.ApplyPlayerRoleLayer(gameObject, newRole);
     }
 
     /// <summary>
@@ -148,14 +157,26 @@ public class RoomPlayer : NetworkBehaviour, IPlayerStateReadonly
         bool showSeeker = currentRole == PlayerRole.Seeker;
 
         if (visualHider != null)
+        {
             visualHider.SetActive(showHider);
+            SetVisualSortingOrder(visualHider, HiderSortingOrder);
+        }
 
         if (visualSeeker != null)
         {
             if (!visualSeeker.activeSelf)
                 visualSeeker.SetActive(true);
             SetChildVisualVisible(visualSeeker, showSeeker);
+            SetVisualSortingOrder(visualSeeker, SeekerSortingOrder);
         }
+    }
+
+    /// <summary>只改根节点 SpriteRenderer，不碰 RangeIndicator 等子渲染器。</summary>
+    static void SetVisualSortingOrder(GameObject visual, int order)
+    {
+        SpriteRenderer sr = visual.GetComponent<SpriteRenderer>();
+        if (sr != null)
+            sr.sortingOrder = order;
     }
 
     static void SetChildVisualVisible(GameObject visual, bool visible)

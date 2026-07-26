@@ -1544,7 +1544,7 @@ MonoBehaviour:
   placeHintText: {fileID: 285888446}
   inventoryParent: {fileID: 1065032409}
   itemSlotPrefab: {fileID: 9140736687435393954, guid: 68e2cb027b33d894a89fb23549f9e81f, type: 3}
-  maxSlots: 5
+  maxSlots: 7
   slotSize: 110
   slotSpacing: 10
   inventoryCountText: {fileID: 107021152}
@@ -14018,7 +14018,7 @@ MonoBehaviour:
   seekerCountText: {fileID: 0}
   hiderIcon: {fileID: 0}
   seekerIcon: {fileID: 0}
-  resultPanel: {fileID: 0}
+  resultPanel: {fileID: 1326907756}
 --- !u!4 &1158141474
 Transform:
   m_ObjectHideFlags: 0
@@ -15761,7 +15761,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!224 &1326907755
 RectTransform:
   m_ObjectHideFlags: 0

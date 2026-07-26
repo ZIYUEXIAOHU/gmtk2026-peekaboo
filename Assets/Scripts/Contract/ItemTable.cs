@@ -8,6 +8,14 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 
+/// <summary>物品尺寸档位（候选队列按大/中/小配额抽取）。</summary>
+public enum ItemSize
+{
+    Large = 0,
+    Middle = 1,
+    Small = 2,
+}
+
 [CreateAssetMenu(fileName = "ItemTable", menuName = "Peekaboo/ItemTable")]
 public class ItemTable : ScriptableObject
 {
@@ -17,6 +25,7 @@ public class ItemTable : ScriptableObject
         public string displayName;  // 物品名（UI 展示）
         public GameObject prefab;   // 场景外观（含碰撞体；必须预挂 NetworkIdentity 并注册为网络预制体）
         public Sprite icon;         // 物品栏图标
+        public ItemSize size;       // 大 / 中 / 小
     }
 
     [Tooltip("itemId = 列表索引，只增不删不重排")]

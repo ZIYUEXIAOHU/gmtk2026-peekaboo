@@ -1,151 +1,284 @@
 using UnityEngine;
-using System.Collections.Generic;
 
+/// <summary>
+/// 抓捕者探测圈表现：可见圈半径 = GameConstants.InvestigateRange，
+/// 并高亮探测圈内、鼠标判定半径内最近的可调查目标（InvestigableObject 或伪装中的躲藏者本体）。
+/// 不因「圈内有躲藏者」变红，避免直接暴露伪装。
+/// </summary>
 public class SeekerRangeIndicator : MonoBehaviour
 {
-    [Header("范围设置")]
-    public float detectRadius = 5f;
-    public LayerMask targetLayer;
-    
+    [Header("范围设置（运行时强制对齐 InvestigateRange）")]
+    public float detectRadius = GameConstants.InvestigateRange;
+    public LayerMask targetLayer = ~0;
+
     [Header("发光效果")]
     public SpriteRenderer indicatorSprite;
     public Color normalColor = new Color(1f, 1f, 1f, 0.3f);
-    public Color activeColor = new Color(1f, 0.3f, 0.1f, 0.6f);
+    public Color activeColor = new Color(1f, 0.85f, 0.2f, 0.45f);
     public float pulseSpeed = 2f;
-    
+
+    [Header("高亮")]
+    public Color highlightTint = new Color(1f, 0.92f, 0.35f, 1f);
+
     [Header("检测")]
     public Transform detectCenter;
-    
+
     [Header("调试")]
     public bool showGizmos = true;
     public Color gizmoColor = Color.green;
-    public Color gizmoActiveColor = Color.red;
-    
-    private bool isPlayerDetected = false;
-    private Collider2D[] detectedTargets = new Collider2D[20];
-    private Vector3 baseScale = Vector3.one;
-    
+    public Color gizmoActiveColor = Color.yellow;
+
+    private bool hasHighlightTarget;
+    private SpriteRenderer highlightedRenderer;
+    private Color highlightedOriginalColor;
+    private bool highlightedHadOriginal;
+    private RoomPlayer roomPlayer;
+
+    void Awake()
+    {
+        CacheRefs();
+    }
+
     void Start()
     {
-        if (detectCenter == null)
-            detectCenter = transform;
-        
+        CacheRefs();
+        detectRadius = GameConstants.InvestigateRange;
         if (indicatorSprite != null)
-        {
-            baseScale = indicatorSprite.transform.localScale;
             indicatorSprite.color = normalColor;
-        }
+        ApplyIndicatorScale(1f);
     }
-    
+
+    void OnDisable()
+    {
+        ClearHighlight();
+    }
+
     void Update()
     {
-        DetectPlayers();
-        UpdateIndicator();
-    }
-    
-    void DetectPlayers()
-    {
-        // ===== 物理检测范围内的碰撞体 =====
-        int hitCount = Physics2D.OverlapCircleNonAlloc(
-            detectCenter.position,
-            detectRadius,
-            detectedTargets,
-            targetLayer
-        );
-        
-        isPlayerDetected = false;
-        
-        // ===== 契约未绑定时，用旧方法 =====
-        if (!GameContract.IsBound || GameContract.State == null)
+        CacheRefs();
+        detectRadius = GameConstants.InvestigateRange;
+
+        bool show = ShouldShowIndicator();
+        if (indicatorSprite != null)
         {
-            for (int i = 0; i < hitCount; i++)
-            {
-                if (detectedTargets[i] == null) continue;
-                RoomPlayer rp = detectedTargets[i].GetComponent<RoomPlayer>();
-                if (rp != null && rp.Role == PlayerRole.Hider && rp.hiderState != HiderState.Captured)
-                {
-                    isPlayerDetected = true;
-                    return;
-                }
-            }
+            if (!indicatorSprite.gameObject.activeSelf)
+                indicatorSprite.gameObject.SetActive(true);
+            indicatorSprite.enabled = show;
+            if (show && detectCenter != null)
+                indicatorSprite.transform.position = detectCenter.position;
+        }
+
+        if (!show)
+        {
+            ClearHighlight();
+            hasHighlightTarget = false;
             return;
         }
-        
-        // ===== 通过契约获取所有存活躲藏者的 NetId =====
-        HashSet<uint> hiderNetIds = new HashSet<uint>();
-        foreach (var player in GameContract.State.Players)
+
+        FindAndHighlightUnderCursor();
+        UpdateIndicator();
+    }
+
+    void CacheRefs()
+    {
+        if (roomPlayer == null)
+            roomPlayer = GetComponentInParent<RoomPlayer>();
+
+        if (detectCenter == null)
         {
-            if (player != null && 
-                player.Role == PlayerRole.Hider && 
-                player.HiderState != HiderState.Captured)
-            {
-                hiderNetIds.Add(player.NetId);
-            }
+            detectCenter = roomPlayer != null ? roomPlayer.transform : transform;
         }
-        
-        // ===== 检查物理检测到的物体是否匹配 =====
-        for (int i = 0; i < hitCount; i++)
+
+        if (indicatorSprite == null)
         {
-            if (detectedTargets[i] == null) continue;
-            
-            RoomPlayer rp = detectedTargets[i].GetComponent<RoomPlayer>();
-            if (rp != null && hiderNetIds.Contains(rp.netId))
-            {
-                isPlayerDetected = true;
-                return;
-            }
+            Transform t = transform.Find("RangeIndicator");
+            if (t != null)
+                indicatorSprite = t.GetComponent<SpriteRenderer>();
         }
     }
-    
+
+    bool ShouldShowIndicator()
+    {
+        if (roomPlayer == null) return false;
+        return roomPlayer.isLocalPlayer && roomPlayer.Role == PlayerRole.Seeker;
+    }
+
+    void FindAndHighlightUnderCursor()
+    {
+        Vector2 origin = detectCenter != null ? (Vector2)detectCenter.position : (Vector2)transform.position;
+        Vector2 mousePos = GetMouseWorldPosition();
+        float pickRadius = GameConstants.InvestigateCursorPickRadius;
+        float bestDist = float.MaxValue;
+        SpriteRenderer bestRenderer = null;
+
+        foreach (InvestigableObject obj in FindObjectsOfType<InvestigableObject>())
+        {
+            if (obj == null) continue;
+            Vector2 pos = obj.transform.position;
+            if (Vector2.Distance(origin, pos) > detectRadius) continue;
+
+            float dMouse = Vector2.Distance(mousePos, pos);
+            if (dMouse > pickRadius || dMouse >= bestDist) continue;
+
+            SpriteRenderer sr = ResolveItemSprite(obj.transform);
+            if (sr == null || !sr.enabled) continue;
+            bestDist = dMouse;
+            bestRenderer = sr;
+        }
+
+        foreach (RoomPlayer rp in FindObjectsOfType<RoomPlayer>())
+        {
+            if (rp == null || rp.Role != PlayerRole.Hider) continue;
+            if (rp.hiderState != HiderState.Disguised && rp.hiderState != HiderState.Invisible)
+                continue;
+
+            Vector2 pos = rp.transform.position;
+            if (Vector2.Distance(origin, pos) > detectRadius) continue;
+
+            float dMouse = Vector2.Distance(mousePos, pos);
+            if (dMouse > pickRadius || dMouse >= bestDist) continue;
+
+            SpriteRenderer sr = ResolveHiderSprite(rp);
+            if (sr == null || !sr.enabled) continue;
+
+            bestDist = dMouse;
+            bestRenderer = sr;
+        }
+
+        hasHighlightTarget = bestRenderer != null;
+
+        if (bestRenderer == highlightedRenderer)
+            return;
+
+        ClearHighlight();
+        if (bestRenderer != null)
+        {
+            highlightedRenderer = bestRenderer;
+            highlightedOriginalColor = bestRenderer.color;
+            highlightedHadOriginal = true;
+            bestRenderer.color = highlightTint;
+        }
+    }
+
+    static Vector2 GetMouseWorldPosition()
+    {
+        Camera cam = Camera.main;
+        if (cam == null)
+            return Vector2.zero;
+        Vector3 p = cam.ScreenToWorldPoint(Input.mousePosition);
+        return new Vector2(p.x, p.y);
+    }
+
+    static SpriteRenderer ResolveItemSprite(Transform root)
+    {
+        Transform bob = root.Find("BobVisual");
+        if (bob != null)
+        {
+            SpriteRenderer bobSr = bob.GetComponent<SpriteRenderer>();
+            if (bobSr != null) return bobSr;
+        }
+
+        SpriteRenderer[] renderers = root.GetComponentsInChildren<SpriteRenderer>(true);
+        for (int i = 0; i < renderers.Length; i++)
+        {
+            if (renderers[i] != null && renderers[i].enabled)
+                return renderers[i];
+        }
+        return root.GetComponent<SpriteRenderer>();
+    }
+
+    static SpriteRenderer ResolveHiderSprite(RoomPlayer rp)
+    {
+        if (rp.visualHider != null)
+        {
+            SpriteRenderer sr = rp.visualHider.GetComponent<SpriteRenderer>();
+            if (sr != null) return sr;
+        }
+
+        Transform visual = rp.transform.Find("Visual_Hider");
+        return visual != null ? visual.GetComponent<SpriteRenderer>() : null;
+    }
+
+    void ClearHighlight()
+    {
+        if (highlightedRenderer != null && highlightedHadOriginal)
+            highlightedRenderer.color = highlightedOriginalColor;
+
+        highlightedRenderer = null;
+        highlightedHadOriginal = false;
+    }
+
     void UpdateIndicator()
     {
         if (indicatorSprite == null) return;
-        
+
         float pulse = Mathf.Sin(Time.time * pulseSpeed) * 0.3f + 0.7f;
-        
-        if (isPlayerDetected)
+        ApplyIndicatorScale(hasHighlightTarget ? 1f + pulse * 0.05f : 1f);
+
+        if (hasHighlightTarget)
         {
             Color targetColor = activeColor;
             targetColor.a = activeColor.a * pulse;
             indicatorSprite.color = targetColor;
-            indicatorSprite.transform.localScale = baseScale * (1f + pulse * 0.05f);
         }
         else
         {
             indicatorSprite.color = normalColor;
-            indicatorSprite.transform.localScale = baseScale;
         }
     }
-    
+
+    /// <summary>按世界半径对齐圆 Sprite 的 localScale（不受父节点 0.1 / 3.5×4 缩放干扰）。</summary>
+    void ApplyIndicatorScale(float pulseMul)
+    {
+        if (indicatorSprite == null) return;
+
+        float parentLossy = 1f;
+        if (indicatorSprite.transform.parent != null)
+        {
+            Vector3 ls = indicatorSprite.transform.parent.lossyScale;
+            parentLossy = Mathf.Max(0.0001f, (Mathf.Abs(ls.x) + Mathf.Abs(ls.y)) * 0.5f);
+        }
+
+        float spriteRadius = 0.5f;
+        if (indicatorSprite.sprite != null)
+            spriteRadius = Mathf.Max(0.0001f, indicatorSprite.sprite.bounds.extents.x);
+
+        float local = detectRadius / (parentLossy * spriteRadius);
+        float s = local * pulseMul;
+        indicatorSprite.transform.localScale = new Vector3(s, s, 1f);
+    }
+
     void OnDrawGizmos()
     {
         if (!showGizmos) return;
         if (detectCenter == null) detectCenter = transform;
-        
-        Color currentGizmoColor = isPlayerDetected ? gizmoActiveColor : gizmoColor;
+
+        float radius = Application.isPlaying ? detectRadius : GameConstants.InvestigateRange;
+        Color currentGizmoColor = hasHighlightTarget ? gizmoActiveColor : gizmoColor;
         Gizmos.color = currentGizmoColor;
-        Gizmos.DrawWireSphere(detectCenter.position, detectRadius);
-        
+        Gizmos.DrawWireSphere(detectCenter.position, radius);
+
         Gizmos.color = new Color(currentGizmoColor.r, currentGizmoColor.g, currentGizmoColor.b, 0.15f);
-        Gizmos.DrawSphere(detectCenter.position, detectRadius);
-        
+        Gizmos.DrawSphere(detectCenter.position, radius);
+
         Gizmos.color = Color.yellow;
         Gizmos.DrawWireSphere(detectCenter.position, 0.1f);
     }
-    
+
     void OnDrawGizmosSelected()
     {
         if (!showGizmos) return;
         if (detectCenter == null) return;
-        
+
+        float radius = Application.isPlaying ? detectRadius : GameConstants.InvestigateRange;
         Gizmos.color = Color.cyan;
-        Gizmos.DrawWireSphere(detectCenter.position, detectRadius);
-        
-        #if UNITY_EDITOR
+        Gizmos.DrawWireSphere(detectCenter.position, radius);
+
+#if UNITY_EDITOR
         UnityEditor.Handles.Label(
-            detectCenter.position + new Vector3(detectRadius, 0, 0),
-            $"半径: {detectRadius:F1}"
+            detectCenter.position + new Vector3(radius, 0, 0),
+            $"探测圈: {radius:F1}"
         );
-        #endif
+#endif
     }
 }

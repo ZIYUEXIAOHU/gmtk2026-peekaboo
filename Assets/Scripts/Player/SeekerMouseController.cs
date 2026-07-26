@@ -1,4 +1,6 @@
 using UnityEngine;
+using UnityEngine.EventSystems;
+using UnityEngine.UI;
 using Mirror;
 using System.Collections.Generic;
 
@@ -9,23 +11,20 @@ public class SeekerMouseController : NetworkBehaviour
     public Texture2D attackCursor;
     public Vector2 hotSpot = Vector2.zero;
     
-    [Header("攻击设置")]
-    public KeyCode attackKey = KeyCode.Mouse0;
-    public float attackRange = 1.5f;
+    [Header("悬停检测")]
     public LayerMask targetLayer;
-    
-    [Header("攻击冷却")]
-    public float attackCooldown = 0.5f;
-    private float lastAttackTime = 0f;
     
     private bool isLocalPlayerReady = false;
     private HashSet<uint> hiderNetIds = new HashSet<uint>();  // 缓存存活躲藏者 NetId
+    private SeekerController seekerController;
+    static readonly List<RaycastResult> uiRaycastBuffer = new List<RaycastResult>(8);
     
     void Start()
     {
         if (!isLocalPlayer) return;
         
         isLocalPlayerReady = true;
+        CacheSeekerController();
         
         if (defaultCursor != null)
         {
@@ -43,11 +42,50 @@ public class SeekerMouseController : NetworkBehaviour
         // ===== 检测鼠标悬停目标 =====
         DetectHoverTarget();
         
-        // ===== 鼠标左键攻击 =====
-        if (Input.GetKeyDown(attackKey))
+        // ===== 鼠标左键攻击（仅点在可交互按钮等控件上时跳过）=====
+        if (Input.GetKeyDown(KeyCode.Mouse0))
         {
-            Attack();
+            if (IsPointerOverInteractableUI())
+                return;
+
+            CacheSeekerController();
+            seekerController?.TryPerformAttack();
         }
+    }
+
+    void CacheSeekerController()
+    {
+        if (seekerController != null) return;
+        // 组件挂在 Visual_Seeker 上，控制器在根节点
+        seekerController = GetComponentInParent<SeekerController>();
+        if (seekerController == null)
+            seekerController = GetComponent<SeekerController>();
+    }
+
+    /// <summary>
+    /// 仅当指针下有可交互 UI（Button / Selectable）时视为点按钮。
+    /// 不用 IsPointerOverGameObject：全屏透明 Image（LobbyUI 等）会误挡全部攻击。
+    /// </summary>
+    static bool IsPointerOverInteractableUI()
+    {
+        EventSystem es = EventSystem.current;
+        if (es == null) return false;
+
+        var eventData = new PointerEventData(es) { position = Input.mousePosition };
+        uiRaycastBuffer.Clear();
+        es.RaycastAll(eventData, uiRaycastBuffer);
+
+        for (int i = 0; i < uiRaycastBuffer.Count; i++)
+        {
+            GameObject go = uiRaycastBuffer[i].gameObject;
+            if (go == null) continue;
+
+            var selectable = go.GetComponentInParent<Selectable>();
+            if (selectable != null && selectable.IsActive() && selectable.IsInteractable())
+                return true;
+        }
+
+        return false;
     }
     
     /// <summary>
@@ -72,6 +110,8 @@ public class SeekerMouseController : NetworkBehaviour
     
     void DetectHoverTarget()
     {
+        if (Camera.main == null) return;
+
         Vector3 mousePos = Camera.main.ScreenToWorldPoint(Input.mousePosition);
         Vector2 mousePosition = new Vector2(mousePos.x, mousePos.y);
         
@@ -98,59 +138,5 @@ public class SeekerMouseController : NetworkBehaviour
         {
             Cursor.SetCursor(defaultCursor, hotSpot, CursorMode.Auto);
         }
-    }
-    
-    void Attack()
-    {
-        if (Time.time - lastAttackTime < attackCooldown) return;
-
-        SeekerController seeker = GetComponentInParent<SeekerController>();
-        if (seeker != null && seeker.IsAttackMoveLocked)
-            return;
-        
-        Vector3 mousePos = Camera.main.ScreenToWorldPoint(Input.mousePosition);
-        Vector2 attackPoint = new Vector2(mousePos.x, mousePos.y);
-        
-        Collider2D[] hits = Physics2D.OverlapCircleAll(attackPoint, attackRange, targetLayer);
-        
-        foreach (var hit in hits)
-        {
-            if (hit == null) continue;
-            
-            RoomPlayer rp = hit.GetComponent<RoomPlayer>();
-            if (rp != null && hiderNetIds.Contains(rp.netId))
-            {
-                // ===== 攻击命中躲藏者 =====
-                lastAttackTime = Time.time;
-                Debug.Log($"⚔️ 攻击躲藏者: {rp.playerName}");
-
-                seeker?.BeginAttack();
-                
-                if (GameContract.IsBound)
-                {
-                    GameContract.Commands.Slash();
-                }
-                
-                ShowAttackEffect(attackPoint);
-                return;
-            }
-        }
-        
-        Debug.Log("💨 未命中");
-        lastAttackTime = Time.time;
-        // 空挥也播攻击并硬直，避免边跑边挥
-        seeker?.BeginAttack();
-    }
-    
-    void ShowAttackEffect(Vector2 position)
-    {
-        Debug.Log($"💥 攻击位置: {position}");
-        // TODO: 添加特效预制体
-    }
-    
-    void OnDrawGizmosSelected()
-    {
-        Gizmos.color = Color.red;
-        Gizmos.DrawWireSphere(transform.position, attackRange);
     }
 }

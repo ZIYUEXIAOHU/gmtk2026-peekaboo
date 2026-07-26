@@ -268,9 +268,9 @@ public class NetworkGameState : NetworkBehaviour, IGameStateReadonly, IGameComma
 
     public void PlaceItem() => CmdPlaceItem();
 
-    public void Investigate() => CmdInvestigate();
+    public void Investigate(Vector2 mouseWorldPosition) => CmdInvestigate(mouseWorldPosition);
 
-    public void Slash() => CmdSlash();
+    public void Slash(Vector2 effectWorldPosition) => CmdSlash(effectWorldPosition);
 
     // ================================================================
     // Commands — 服务端裁定（单例场景物体，requiresAuthority=false，靠 sender 区分调用者）
@@ -325,8 +325,7 @@ public class NetworkGameState : NetworkBehaviour, IGameStateReadonly, IGameComma
         {
             ServerFillHiderItemQueue(rp);
             rp.hiderState = HiderState.Disguised;
-            if (rp.itemQueue.Count > 0)
-                rp.disguiseItemId = rp.itemQueue[0];
+            rp.disguiseItemId = PickRandomDisguiseItemId(GameConstants.InvalidItemId);
         }
         else
         {
@@ -535,7 +534,7 @@ public class NetworkGameState : NetworkBehaviour, IGameStateReadonly, IGameComma
     }
 
     [Command(requiresAuthority = false)]
-    private void CmdInvestigate(NetworkConnectionToClient sender = null)
+    private void CmdInvestigate(Vector2 mouseWorldPosition, NetworkConnectionToClient sender = null)
     {
         RoomPlayer seeker = GetRoomPlayer(sender);
         if (seeker == null) return;
@@ -552,7 +551,12 @@ public class NetworkGameState : NetworkBehaviour, IGameStateReadonly, IGameComma
         }
 
         Vector2 origin = seeker.transform.position;
-        if (!TryFindNearestInvestigable(origin, GameConstants.InvestigateRange, out InvestigableTarget target))
+        if (!TryFindInvestigableUnderCursor(
+                origin,
+                mouseWorldPosition,
+                GameConstants.InvestigateRange,
+                GameConstants.InvestigateCursorPickRadius,
+                out InvestigableTarget target))
         {
             RejectCommand(sender, GameCommandType.Investigate, RejectReason.InvalidTarget);
             return;
@@ -601,7 +605,7 @@ public class NetworkGameState : NetworkBehaviour, IGameStateReadonly, IGameComma
     }
 
     [Command(requiresAuthority = false)]
-    private void CmdSlash(NetworkConnectionToClient sender = null)
+    private void CmdSlash(Vector2 effectWorldPosition, NetworkConnectionToClient sender = null)
     {
         RoomPlayer seeker = GetRoomPlayer(sender);
         if (seeker == null) return;
@@ -618,7 +622,10 @@ public class NetworkGameState : NetworkBehaviour, IGameStateReadonly, IGameComma
         }
 
         Vector2 origin = seeker.transform.position;
-        RoomPlayer ghost = FindNearestGhostHider(origin, GameConstants.SlashRange);
+        Vector2 effectPos = ClampMouseSlashPosition(origin, effectWorldPosition);
+        RoomPlayer ghost = FindNearestGhostHiderDual(
+            origin, GameConstants.SlashRange,
+            effectPos, GameConstants.MouseSlashRange);
 
         bool hitGhost = ghost != null;
         uint targetNetId = hitGhost ? ghost.netId : GameConstants.InvalidNetId;
@@ -629,6 +636,7 @@ public class NetworkGameState : NetworkBehaviour, IGameStateReadonly, IGameComma
             hitGhost = hitGhost,
             targetNetId = targetNetId,
             position = origin,
+            effectPosition = effectPos,
         };
 
         // 练习大厅：无鬼魂也可「随意劈砍」——仍广播未命中的 OnSlashed，方便程序 2 播特效。
@@ -698,8 +706,7 @@ public class NetworkGameState : NetworkBehaviour, IGameStateReadonly, IGameComma
         {
             ServerFillHiderItemQueue(hider);
             hider.hiderState = HiderState.Disguised;
-            if (hider.itemQueue.Count > 0)
-                hider.disguiseItemId = hider.itemQueue[0];
+            hider.disguiseItemId = PickRandomDisguiseItemId(GameConstants.InvalidItemId);
         }
         SetPhase(GamePhase.Prep, GameConstants.PrepDuration);
     }
@@ -838,7 +845,10 @@ public class NetworkGameState : NetworkBehaviour, IGameStateReadonly, IGameComma
         }
     }
 
-    /// <summary>从 ItemTable 随机 itemId；表空则用占位 id 范围 0..FallbackQueueLength-1。尽量避开当前伪装。</summary>
+    /// <summary>
+    /// 服务端随机伪装 itemId（选角/Prep/练习复活/变身波共用）。
+    /// 从 ItemTable 全表抽取；表空则用占位 id 0..FallbackQueueLength-1。尽量避开当前伪装。
+    /// </summary>
     [Server]
     private int PickRandomDisguiseItemId(int currentItemId)
     {
@@ -883,6 +893,7 @@ public class NetworkGameState : NetworkBehaviour, IGameStateReadonly, IGameComma
                 {
                     seekerNetId = seeker.netId,
                     center = seeker.transform.position,
+                    // 跳动范围与探测圈一致（HeartbeatRadius 须等于 InvestigateRange）
                     radius = GameConstants.HeartbeatRadius,
                     beatIndex = heartbeatBeatIndex,
                     serverTime = serverTime,
@@ -901,16 +912,64 @@ public class NetworkGameState : NetworkBehaviour, IGameStateReadonly, IGameComma
     private void ServerFillHiderItemQueue(RoomPlayer rp)
     {
         rp.itemQueue.Clear();
-        if (itemTable != null && itemTable.Count > 0)
-        {
-            for (int i = 0; i < itemTable.Count; i++)
-                rp.itemQueue.Add(i);
-        }
-        else
+        if (itemTable == null || itemTable.Count == 0)
         {
             // ItemTable 为空：合成 itemId，外观一律走占位 prefab
             for (int i = 0; i < FallbackQueueLength; i++)
                 rp.itemQueue.Add(i);
+            return;
+        }
+
+        // 配额：0–1 大 / 2–4 中 / 1–2 小（库存不足时取该桶全部）
+        List<int> large = CollectItemIdsBySize(ItemSize.Large);
+        List<int> middle = CollectItemIdsBySize(ItemSize.Middle);
+        List<int> small = CollectItemIdsBySize(ItemSize.Small);
+
+        List<int> picked = new List<int>(7);
+        PickRandomWithoutReplacement(large, UnityEngine.Random.Range(0, 2), picked);
+        PickRandomWithoutReplacement(middle, UnityEngine.Random.Range(2, 5), picked);
+        PickRandomWithoutReplacement(small, UnityEngine.Random.Range(1, 3), picked);
+
+        ShuffleInPlace(picked);
+        for (int i = 0; i < picked.Count; i++)
+            rp.itemQueue.Add(picked[i]);
+    }
+
+    List<int> CollectItemIdsBySize(ItemSize size)
+    {
+        List<int> ids = new List<int>();
+        for (int i = 0; i < itemTable.Count; i++)
+        {
+            ItemTable.Entry entry = itemTable.Get(i);
+            if (entry != null && entry.size == size)
+                ids.Add(i);
+        }
+        return ids;
+    }
+
+    static void PickRandomWithoutReplacement(List<int> pool, int count, List<int> dest)
+    {
+        if (pool == null || pool.Count == 0 || count <= 0) return;
+        int take = Mathf.Min(count, pool.Count);
+        // Fisher–Yates 前 take 次交换，再取前 take
+        for (int i = 0; i < take; i++)
+        {
+            int j = UnityEngine.Random.Range(i, pool.Count);
+            int tmp = pool[i];
+            pool[i] = pool[j];
+            pool[j] = tmp;
+            dest.Add(pool[i]);
+        }
+    }
+
+    static void ShuffleInPlace(List<int> list)
+    {
+        for (int i = list.Count - 1; i > 0; i--)
+        {
+            int j = UnityEngine.Random.Range(0, i + 1);
+            int tmp = list[i];
+            list[i] = list[j];
+            list[j] = tmp;
         }
     }
 
@@ -920,8 +979,7 @@ public class NetworkGameState : NetworkBehaviour, IGameStateReadonly, IGameComma
         hider.hiderState = HiderState.Disguised;
         if (hider.itemQueue.Count == 0)
             ServerFillHiderItemQueue(hider);
-        if (hider.itemQueue.Count > 0)
-            hider.disguiseItemId = hider.itemQueue[0];
+        hider.disguiseItemId = PickRandomDisguiseItemId(hider.disguiseItemId);
 
         RespawnInfo info = new RespawnInfo
         {
@@ -979,12 +1037,17 @@ public class NetworkGameState : NetworkBehaviour, IGameStateReadonly, IGameComma
     }
 
     /// <summary>
-    /// 在范围内取最近可调查目标：
+    /// 在探测圈内、鼠标判定半径内取最近可调查目标：
     /// 1) 场景/放置的 InvestigableObject（需 NetworkIdentity）
     /// 2) 伪装中的躲藏者本体（Disguised / Invisible；Ghost/Captured 排除）
     /// </summary>
     [Server]
-    private bool TryFindNearestInvestigable(Vector2 origin, float range, out InvestigableTarget best)
+    private bool TryFindInvestigableUnderCursor(
+        Vector2 seekerPos,
+        Vector2 mousePos,
+        float seekerRange,
+        float cursorPickRadius,
+        out InvestigableTarget best)
     {
         best = default;
         float bestDist = float.MaxValue;
@@ -993,8 +1056,11 @@ public class NetworkGameState : NetworkBehaviour, IGameStateReadonly, IGameComma
         foreach (InvestigableObject obj in FindObjectsOfType<InvestigableObject>())
         {
             if (obj == null || obj.netId == GameConstants.InvalidNetId) continue;
-            float d = Vector2.Distance(origin, obj.transform.position);
-            if (d > range || d >= bestDist) continue;
+            Vector2 pos = obj.transform.position;
+            if (Vector2.Distance(seekerPos, pos) > seekerRange) continue;
+
+            float dMouse = Vector2.Distance(mousePos, pos);
+            if (dMouse > cursorPickRadius || dMouse >= bestDist) continue;
 
             RoomPlayer linked = null;
             if (obj.LinksToHider &&
@@ -1011,10 +1077,10 @@ public class NetworkGameState : NetworkBehaviour, IGameStateReadonly, IGameComma
             best = new InvestigableTarget
             {
                 netId = obj.netId,
-                position = obj.transform.position,
+                position = pos,
                 linkedHider = linked,
             };
-            bestDist = d;
+            bestDist = dMouse;
             found = true;
         }
 
@@ -1024,16 +1090,19 @@ public class NetworkGameState : NetworkBehaviour, IGameStateReadonly, IGameComma
             if (hider.hiderState != HiderState.Disguised && hider.hiderState != HiderState.Invisible)
                 continue;
 
-            float d = Vector2.Distance(origin, hider.transform.position);
-            if (d > range || d >= bestDist) continue;
+            Vector2 pos = hider.transform.position;
+            if (Vector2.Distance(seekerPos, pos) > seekerRange) continue;
+
+            float dMouse = Vector2.Distance(mousePos, pos);
+            if (dMouse > cursorPickRadius || dMouse >= bestDist) continue;
 
             best = new InvestigableTarget
             {
                 netId = hider.netId,
-                position = hider.transform.position,
+                position = pos,
                 linkedHider = hider,
             };
-            bestDist = d;
+            bestDist = dMouse;
             found = true;
         }
 
@@ -1043,17 +1112,45 @@ public class NetworkGameState : NetworkBehaviour, IGameStateReadonly, IGameComma
     [Server]
     private RoomPlayer FindNearestGhostHider(Vector2 origin, float range)
     {
+        return FindNearestGhostHiderDual(origin, range, origin, 0f);
+    }
+
+    /// <summary>
+    /// 两圆并集内找 Ghost：对每个目标取 min(距A, 距B)（仅计入各自半径内），再取全局最小。
+    /// </summary>
+    [Server]
+    private RoomPlayer FindNearestGhostHiderDual(
+        Vector2 originA, float rangeA,
+        Vector2 originB, float rangeB)
+    {
         RoomPlayer best = null;
         float bestDist = float.MaxValue;
         foreach (RoomPlayer hider in GetAllRoomPlayers())
         {
             if (hider.role != PlayerRole.Hider || hider.hiderState != HiderState.Ghost) continue;
-            float d = Vector2.Distance(origin, hider.transform.position);
-            if (d > range || d >= bestDist) continue;
+            Vector2 pos = hider.transform.position;
+            float dA = Vector2.Distance(originA, pos);
+            float dB = Vector2.Distance(originB, pos);
+
+            float score = float.MaxValue;
+            if (dA <= rangeA) score = Mathf.Min(score, dA);
+            if (dB <= rangeB) score = Mathf.Min(score, dB);
+            if (score >= bestDist) continue;
+
             best = hider;
-            bestDist = d;
+            bestDist = score;
         }
         return best;
+    }
+
+    [Server]
+    static Vector2 ClampMouseSlashPosition(Vector2 seekerPos, Vector2 effectWorldPosition)
+    {
+        Vector2 delta = effectWorldPosition - seekerPos;
+        float max = GameConstants.MouseSlashMaxDistance;
+        if (delta.sqrMagnitude <= max * max)
+            return effectWorldPosition;
+        return seekerPos + delta.normalized * max;
     }
 
     private void EnsureItemResources()

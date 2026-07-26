@@ -14,7 +14,7 @@ public class HiderUIController : MonoBehaviour
     [Header("物品栏")]
     public Transform inventoryParent;
     public GameObject itemSlotPrefab;
-    public int maxSlots = 5;
+    public int maxSlots = 7;
     public float slotSize = 50f;
     public float slotSpacing = 10f;
     public TextMeshProUGUI inventoryCountText;
@@ -42,6 +42,8 @@ public class HiderUIController : MonoBehaviour
     private List<IPlayerStateReadonly> aliveHiders = new List<IPlayerStateReadonly>();
     private int currentObserverIndex = 0;
     private bool isObserving = false;
+    private string lastInventorySignature = null;
+    private HiderState lastHiderState = (HiderState)(-1);
     
     void Start()
     {
@@ -64,6 +66,39 @@ public class HiderUIController : MonoBehaviour
             observerPrevBtn.onClick.AddListener(OnPrevObserver);
         if (observerNextBtn != null)
             observerNextBtn.onClick.AddListener(OnNextObserver);
+    }
+
+    void Update()
+    {
+        if (!GameContract.IsBound || GameContract.State == null)
+            return;
+
+        IPlayerStateReadonly local = GameContract.State.LocalPlayer;
+        if (local == null || local.Role != PlayerRole.Hider)
+            return;
+
+        string signature = BuildInventorySignature(local.ItemQueue);
+        if (signature == lastInventorySignature && local.HiderState == lastHiderState)
+            return;
+
+        lastInventorySignature = signature;
+        lastHiderState = local.HiderState;
+        UpdateHiderUI(local, GameContract.State.Players);
+    }
+
+    static string BuildInventorySignature(IReadOnlyList<int> queue)
+    {
+        if (queue == null || queue.Count == 0)
+            return "0";
+
+        var sb = new System.Text.StringBuilder(queue.Count * 4);
+        sb.Append(queue.Count);
+        for (int i = 0; i < queue.Count; i++)
+        {
+            sb.Append(':');
+            sb.Append(queue[i]);
+        }
+        return sb.ToString();
     }
     
     void InitializeInventory()

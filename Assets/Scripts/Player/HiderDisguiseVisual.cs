@@ -4,6 +4,7 @@ using UnityEngine;
 /// <summary>
 /// 客户端表现：根据 RoomPlayer.disguiseItemId / hiderState 切换 Visual_Hider 外观与透明度，
 /// 并按伪装物品尺寸同步根节点 BoxCollider2D（与摆放物一致）。
+/// Ghost 态恢复躲藏者原型循环动画与默认碰撞箱，供 Seeker 劈砍。
 /// 挂在 RoomPlayerPrefab 根上；不依赖 NetworkBehaviour。
 /// </summary>
 public class HiderDisguiseVisual : MonoBehaviour
@@ -11,12 +12,13 @@ public class HiderDisguiseVisual : MonoBehaviour
     [Header("引用（可空，运行时自动查找）")]
     [SerializeField] RoomPlayer roomPlayer;
     [SerializeField] SpriteRenderer hiderSpriteRenderer;
+    [SerializeField] Animator hiderAnimator;
+    [SerializeField] HiderPrototypeFloat prototypeFloat;
     [SerializeField] BoxCollider2D bodyCollider;
     [SerializeField] ItemTable itemTable;
 
     [Header("透明度")]
     [SerializeField] [Range(0f, 1f)] float invisibleLocalAlpha = 0.35f;
-    [SerializeField] [Range(0f, 1f)] float ghostAlpha = 0.5f;
 
     [Header("碰撞箱")]
     [Tooltip("碰撞箱相对物品尺寸的缩放（1=完全贴合）")]
@@ -26,6 +28,7 @@ public class HiderDisguiseVisual : MonoBehaviour
     [SerializeField] Vector2 defaultColliderOffset = Vector2.zero;
 
     Sprite defaultSprite;
+    Vector3 defaultVisualLocalScale = Vector3.one;
     int lastItemId = int.MinValue;
     HiderState lastState = (HiderState)(-1);
     PlayerRole lastRole = (PlayerRole)(-1);
@@ -35,7 +38,10 @@ public class HiderDisguiseVisual : MonoBehaviour
     {
         CacheRefs();
         if (hiderSpriteRenderer != null)
+        {
             defaultSprite = hiderSpriteRenderer.sprite;
+            defaultVisualLocalScale = hiderSpriteRenderer.transform.localScale;
+        }
 
         if (bodyCollider != null)
         {
@@ -86,6 +92,24 @@ public class HiderDisguiseVisual : MonoBehaviour
             }
         }
 
+        if (hiderAnimator == null && hiderSpriteRenderer != null)
+            hiderAnimator = hiderSpriteRenderer.GetComponent<Animator>();
+        if (hiderAnimator == null)
+        {
+            Transform t = transform.Find("Visual_Hider");
+            if (t != null)
+                hiderAnimator = t.GetComponent<Animator>();
+        }
+
+        if (prototypeFloat == null && hiderSpriteRenderer != null)
+            prototypeFloat = hiderSpriteRenderer.GetComponent<HiderPrototypeFloat>();
+        if (prototypeFloat == null)
+        {
+            Transform t = transform.Find("Visual_Hider");
+            if (t != null)
+                prototypeFloat = t.GetComponent<HiderPrototypeFloat>();
+        }
+
         if (itemTable == null)
             itemTable = Resources.Load<ItemTable>("ItemTable");
     }
@@ -106,20 +130,12 @@ public class HiderDisguiseVisual : MonoBehaviour
 
         if (roomPlayer.role != PlayerRole.Hider)
         {
+            SetPrototypeLoop(false);
             RestoreDefaultCollider();
+            RestoreDefaultVisualScale();
             return;
         }
 
-        // 换装
-        Sprite sprite = ResolveSprite(roomPlayer.disguiseItemId);
-        if (sprite != null)
-            hiderSpriteRenderer.sprite = sprite;
-        else if (defaultSprite != null)
-            hiderSpriteRenderer.sprite = defaultSprite;
-
-        ApplyColliderForItem(roomPlayer.disguiseItemId, sprite);
-
-        // 透明度 / 显隐
         Color c = hiderSpriteRenderer.color;
         c.r = 1f;
         c.g = 1f;
@@ -128,11 +144,31 @@ public class HiderDisguiseVisual : MonoBehaviour
         switch (roomPlayer.hiderState)
         {
             case HiderState.Disguised:
-                c.a = 1f;
-                hiderSpriteRenderer.enabled = true;
-                break;
             case HiderState.Invisible:
-                if (isLocal)
+            {
+                // 伪装/隐身：套用物品外观与碰撞箱
+                Sprite sprite = ResolveSprite(roomPlayer.disguiseItemId);
+                if (sprite != null)
+                {
+                    SetPrototypeLoop(false);
+                    hiderSpriteRenderer.sprite = sprite;
+                    ApplyVisualScaleToItemDisplay();
+                }
+                else
+                {
+                    // 无有效伪装贴图时回退原身循环
+                    SetPrototypeLoop(true);
+                    RestoreDefaultVisualScale();
+                }
+
+                ApplyColliderForItem(roomPlayer.disguiseItemId, sprite);
+
+                if (roomPlayer.hiderState == HiderState.Disguised)
+                {
+                    c.a = 1f;
+                    hiderSpriteRenderer.enabled = true;
+                }
+                else if (isLocal)
                 {
                     c.a = invisibleLocalAlpha;
                     hiderSpriteRenderer.enabled = true;
@@ -143,21 +179,66 @@ public class HiderDisguiseVisual : MonoBehaviour
                     hiderSpriteRenderer.enabled = false;
                 }
                 break;
+            }
             case HiderState.Ghost:
-                c.a = ghostAlpha;
+                // 被调查命中：变回原型循环动画，全员可见，可被劈砍
+                SetPrototypeLoop(true);
+                RestoreDefaultVisualScale();
+                RestoreDefaultCollider();
+                c.a = 1f;
                 hiderSpriteRenderer.enabled = true;
                 break;
             case HiderState.Captured:
+                SetPrototypeLoop(false);
+                RestoreDefaultVisualScale();
+                RestoreDefaultCollider();
                 c.a = 0f;
                 hiderSpriteRenderer.enabled = false;
                 break;
             default:
+                SetPrototypeLoop(true);
                 c.a = 1f;
                 hiderSpriteRenderer.enabled = true;
                 break;
         }
 
         hiderSpriteRenderer.color = c;
+    }
+
+    /// <summary>
+    /// 原身眼睛循环 + 毛团漂浮：开 Animator/Float；伪装成物品时必须关掉，否则会覆盖物品贴图。
+    /// </summary>
+    void SetPrototypeLoop(bool enabled)
+    {
+        if (hiderAnimator != null && hiderAnimator.enabled != enabled)
+        {
+            hiderAnimator.enabled = enabled;
+            if (enabled)
+                hiderAnimator.Play(0, 0, 0f);
+        }
+
+        if (prototypeFloat != null && prototypeFloat.enabled != enabled)
+            prototypeFloat.enabled = enabled;
+    }
+
+    /// <summary>把 Visual_Hider 调到与放置物相同的世界尺度（GameConstants.ItemScale*）。</summary>
+    void ApplyVisualScaleToItemDisplay()
+    {
+        if (hiderSpriteRenderer == null)
+            return;
+
+        Transform visual = hiderSpriteRenderer.transform;
+        Vector3 parentLossy = visual.parent != null ? visual.parent.lossyScale : Vector3.one;
+        visual.localScale = new Vector3(
+            GameConstants.ItemScaleX / ApproxAbs(parentLossy.x),
+            GameConstants.ItemScaleY / ApproxAbs(parentLossy.y),
+            1f);
+    }
+
+    void RestoreDefaultVisualScale()
+    {
+        if (hiderSpriteRenderer != null)
+            hiderSpriteRenderer.transform.localScale = defaultVisualLocalScale;
     }
 
     void ApplyColliderForItem(int itemId, Sprite sprite)
@@ -168,7 +249,7 @@ public class HiderDisguiseVisual : MonoBehaviour
         Vector2 size = defaultColliderSize;
         Vector2 offset = defaultColliderOffset;
 
-        // 优先用物品 Prefab 上的碰撞箱（与摆放物一致）
+        // 物品 Prefab 碰撞箱（尺度 1）；换算到根节点本地，使世界尺寸 = Prefab × ItemScale
         if (TryGetItemCollider(itemId, out Vector2 prefabSize, out Vector2 prefabOffset))
         {
             size = prefabSize;
@@ -182,12 +263,27 @@ public class HiderDisguiseVisual : MonoBehaviour
         }
 
         size *= colliderScale;
-        size.x = Mathf.Max(size.x, minColliderSize.x);
-        size.y = Mathf.Max(size.y, minColliderSize.y);
+
+        Vector3 lossy = transform.lossyScale;
+        float absX = ApproxAbs(lossy.x);
+        float absY = ApproxAbs(lossy.y);
+        size.x = size.x * GameConstants.ItemScaleX / absX;
+        size.y = size.y * GameConstants.ItemScaleY / absY;
+        offset.x = offset.x * GameConstants.ItemScaleX / absX;
+        offset.y = offset.y * GameConstants.ItemScaleY / absY;
+
+        size.x = Mathf.Max(size.x, minColliderSize.x * GameConstants.ItemScaleX / absX);
+        size.y = Mathf.Max(size.y, minColliderSize.y * GameConstants.ItemScaleY / absY);
 
         bodyCollider.size = size;
         bodyCollider.offset = offset;
         SyncGroundCheckToColliderBottom(size, offset);
+    }
+
+    static float ApproxAbs(float v)
+    {
+        float a = Mathf.Abs(v);
+        return a < 0.0001f ? 1f : a;
     }
 
     bool TryGetItemCollider(int itemId, out Vector2 size, out Vector2 offset)
@@ -231,7 +327,6 @@ public class HiderDisguiseVisual : MonoBehaviour
         float bottom = offset.y - size.y * 0.5f;
         groundCheck.localPosition = new Vector3(offset.x, bottom - 0.02f, 0f);
 
-        // 同步控制器引用（若已缓存）
         var hider = GetComponent<HiderController>();
         if (hider != null)
             hider.groundCheckPoint = groundCheck;
